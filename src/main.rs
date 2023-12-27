@@ -1442,6 +1442,8 @@ async fn main() {
     }
 
     // Do not write to cache for development
-    #[cfg(debug_assertions)]
+    #[cfg(debug_assertions)] {
+        return;
+    }
     mostly_static.animes.write("./anime-cache.db").unwrap();
 }
