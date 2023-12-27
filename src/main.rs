@@ -1388,10 +1388,16 @@ async fn main() {
                     ..
                 } => break 'running,
                 Event::MouseButtonDown { .. } => {}
-                Event::MouseButtonUp { mouse_btn: sdl2::mouse::MouseButton::Left, .. } => {
+                Event::MouseButtonUp {
+                    mouse_btn: sdl2::mouse::MouseButton::Left,
+                    ..
+                } => {
                     app.mouse_clicked_left = true;
                 }
-                Event::MouseButtonUp { mouse_btn: sdl2::mouse::MouseButton::Right, .. } => {
+                Event::MouseButtonUp {
+                    mouse_btn: sdl2::mouse::MouseButton::Right,
+                    ..
+                } => {
                     app.mouse_clicked_right = true;
                 }
                 Event::MouseMotion { x, y, .. } => {
