@@ -1521,7 +1521,7 @@ async fn main() {
         }
     }
 
-    // Do not write to cache for development
+    // Do not write to cache while developing
     #[cfg(debug_assertions)]
     {
         return;
