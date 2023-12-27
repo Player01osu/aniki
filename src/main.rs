@@ -790,7 +790,8 @@ fn draw_text(
     let texture = app.text_manager.load(text.as_ref(), font_info, color, w);
     let TextureQuery { width, height, .. } = texture.query();
     if let Some(height) = h {
-        app.canvas.set_clip_rect(rect!(x, y, width, height));
+        let clip_rect = app.canvas.clip_rect().unwrap_or(rect!(x, y, width, height));
+        app.canvas.set_clip_rect(clip_rect);
     }
     app.canvas
         .copy(&texture, None, Some(rect!(x, y, width, height)))
