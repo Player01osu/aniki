@@ -1486,10 +1486,10 @@ async fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: while app.running {
         if app.canvas.window().has_mouse_focus() {
-            app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
-            app.canvas.clear();
             app.reset_frame_state()
         }
+        app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
+        app.canvas.clear();
 
         for event in event_pump.poll_iter() {
             match event {
