@@ -1086,6 +1086,7 @@ impl Style {
     }
 }
 
+/// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
     let button_rect = layout.to_rect();
     let (text_width, _text_height) = text_size(app, TITLE_FONT_INFO, &text);
@@ -1236,6 +1237,7 @@ fn draw_episode(
             mutable_anime.update_watched(episode.to_owned()).unwrap();
             let anime = Rc::new(mutable_anime.clone());
             app.set_screen(Screen::SelectEpisode(anime));
+            app.episode_scroll = 0;
             open_url(&paths[0]).unwrap();
         }
     }
