@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use anyhow::Context;
+use anyhow::Result;
 use database::episode::Episode;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
@@ -320,18 +322,23 @@ impl<'a> TextureManager<'a> {
         image: Image,
         crop_pos: Option<(i32, i32)>,
         ratio: Option<(u32, u32)>,
-    ) -> Rc<Texture<'a>> {
+    ) -> Result<Rc<Texture<'a>>> {
         // TODO: Anti-aliasing for images.
         //
         // I want images to be blurred bilinearly since they currently have little
         // pre-processing done prior to scaling down and bliting onto canvas.
 
         match self.cache.entry((image.clone(), ratio)) {
-            Entry::Occupied(v) => Rc::clone(v.get()),
+            Entry::Occupied(v) => Ok(Rc::clone(v.get())),
             Entry::Vacant(v) => {
                 let raw_img = match image {
-                    Image::PlayIcon => RWops::from_bytes(PLAY_ICON).unwrap().load().unwrap(),
-                    Image::FromPath(path) => Surface::from_file(path.as_ref()).unwrap(),
+                    Image::PlayIcon => RWops::from_bytes(PLAY_ICON)
+                        .expect("Failed to load binary image")
+                        .load()
+                        .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    Image::FromPath(path) => Surface::from_file(path.as_ref())
+                        .map_err(|e| anyhow::anyhow!("{e}"))
+                        .with_context(|| "Could not load iamge")?,
                 };
                 match ratio {
                     Some((width_ratio, height_ratio)) => {
@@ -381,7 +388,7 @@ impl<'a> TextureManager<'a> {
                         let texture = surface.as_texture(self.texture_creator).unwrap();
                         let texture = Rc::new(texture);
                         v.insert(Rc::clone(&texture));
-                        texture
+                        Ok(texture)
                     }
                     None => {
                         let texture = self
@@ -390,16 +397,16 @@ impl<'a> TextureManager<'a> {
                             .unwrap();
                         let texture = Rc::new(texture);
                         v.insert(Rc::clone(&texture));
-                        texture
+                        Ok(texture)
                     }
                 }
             }
         }
     }
 
-    pub fn query_size(&mut self, image: Image) -> (u32, u32) {
-        let TextureQuery { width, height, .. } = self.load(image, None, None).query();
-        (width, height)
+    pub fn query_size(&mut self, image: Image) -> Result<(u32, u32)> {
+        let TextureQuery { width, height, .. } = self.load(image, None, None)?.query();
+        Ok((width, height))
     }
 }
 
@@ -596,10 +603,11 @@ fn color_hex_a(hex: u32, alpha: u8) -> Color {
     Color::RGBA(r, g, b, alpha)
 }
 
-fn draw_image_clip(app: &mut App, image: Image, layout: Layout) {
+// TODO: Add filler image if image not found
+fn draw_image_clip(app: &mut App, image: Image, layout: Layout) -> Result<()> {
     let texture = app
         .image_manager
-        .load(image, None, Some((layout.width, layout.height)));
+        .load(image, None, Some((layout.width, layout.height)))?;
     let TextureQuery {
         width: mut image_width,
         height: mut image_height,
@@ -620,11 +628,18 @@ fn draw_image_clip(app: &mut App, image: Image, layout: Layout) {
             None,
             Some(rect!(layout.x, layout.y, image_width, image_height)),
         )
-        .unwrap();
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(())
 }
 
-fn draw_image_float(app: &mut App, image: Image, layout: Layout, padding: Option<(i32, i32)>) {
-    let texture = app.image_manager.load(image, None, None);
+// TODO: Add filler image if image not found
+fn draw_image_float(
+    app: &mut App,
+    image: Image,
+    layout: Layout,
+    padding: Option<(i32, i32)>,
+) -> Result<()> {
+    let texture = app.image_manager.load(image, None, None)?;
     let TextureQuery {
         width: mut image_width,
         height: mut image_height,
@@ -656,29 +671,27 @@ fn draw_image_float(app: &mut App, image: Image, layout: Layout, padding: Option
         ),
     };
     app.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
+    Ok(())
 }
 
 fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
-    match anime.thumbnail() {
-        Some(path) => {
-            //let path = app.get_string(path);
-            draw_image_clip(app, Image::FromPath(path.clone().into_boxed_str()), layout);
-        }
-        None => {
-            app.canvas.set_draw_color(color_hex(0x9A9A9A));
-            app.canvas.fill_rect(layout.to_rect()).unwrap();
-            draw_text_centered(
-                app,
-                DESCRIPTION_FONT_INFO,
-                "No Thumbnail :<",
-                color_hex(0x303030),
-                layout.x + layout.width as i32 / 2,
-                layout.y + layout.height as i32 / 2,
-                None,
-                None,
-            );
+    if let Some(path) = anime.thumbnail() {
+        if draw_image_clip(app, Image::FromPath(path.clone().into_boxed_str()), layout).is_ok() {
+            return;
         }
     }
+    app.canvas.set_draw_color(color_hex(0x9A9A9A));
+    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    draw_text_centered(
+        app,
+        DESCRIPTION_FONT_INFO,
+        "No Thumbnail :<",
+        color_hex(0x303030),
+        layout.x + layout.width as i32 / 2,
+        layout.y + layout.height as i32 / 2,
+        None,
+        None,
+    );
 }
 
 fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
@@ -728,7 +741,8 @@ fn draw_card_extra_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
         clicked = true;
         let new_path = native_dialog::FileDialog::new()
             .add_filter("Image", &["png", "jpg", "gif", "svg"])
-            .show_open_single_file().expect("Failed to open native file picker");
+            .show_open_single_file()
+            .expect("Failed to open native file picker");
         if let Some(new_path) = new_path {
             anime.set_thumbnail(Some(new_path.to_string_lossy().to_string()));
         }
@@ -1115,12 +1129,16 @@ fn draw_top_panel_with_metadata(
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
             let path = thumbnail.clone().into_boxed_str();
-            let (image_width, image_height) =
-                app.image_manager.query_size(Image::FromPath(path.clone()));
-            let (image_layout, description_layout) =
-                layout.split_vert(image_width * layout.height / image_height, layout.width);
-            draw_image_float(app, Image::FromPath(path), image_layout, None);
-            description_layout.pad_outer(10, 10)
+            if let Ok((image_width, image_height)) =
+                app.image_manager.query_size(Image::FromPath(path.clone()))
+            {
+                let (image_layout, description_layout) =
+                    layout.split_vert(image_width * layout.height / image_height, layout.width);
+                let _ = draw_image_float(app, Image::FromPath(path), image_layout, None);
+                description_layout.pad_outer(10, 10)
+            } else {
+                layout
+            }
         }
         None => layout,
     };
@@ -1190,7 +1208,10 @@ fn draw_episode(
     layout: Layout,
     clip_rect: Rect,
 ) {
-    let (play_width, play_height) = app.image_manager.query_size(Image::PlayIcon);
+    let (play_width, play_height) = app
+        .image_manager
+        .query_size(Image::PlayIcon)
+        .expect("Failed to load image");
     let (play_layout, ep_name_layout) = layout
         .pad_outer(0, 5)
         .pad_right(5)
@@ -1210,7 +1231,7 @@ fn draw_episode(
             open_url(&paths[0]).unwrap();
         }
     }
-    draw_image_float(app, Image::PlayIcon, play_layout, Some((10, 0)));
+    let _ = draw_image_float(app, Image::PlayIcon, play_layout, Some((10, 0)));
     draw_text(
         app,
         BACK_BUTTON_FONT_INFO,
