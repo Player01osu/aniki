@@ -546,39 +546,39 @@ impl Layout {
         }
     }
 
-    pub fn pad_left(self, pad: u32) -> Self {
+    pub fn pad_left(self, pad: i32) -> Self {
         Self {
-            x: self.x + pad as i32,
+            x: self.x + pad,
             y: self.y,
             width: self.width,
             height: self.height,
         }
     }
 
-    pub fn pad_right(self, pad: u32) -> Self {
+    pub fn pad_right(self, pad: i32) -> Self {
         Self {
             x: self.x,
             y: self.y,
-            width: self.width - pad,
+            width: (self.width as i32 - pad) as u32,
             height: self.height,
         }
     }
 
-    pub fn pad_top(self, pad: u32) -> Self {
+    pub fn pad_top(self, pad: i32) -> Self {
         Self {
             x: self.x,
-            y: self.y + pad as i32,
+            y: self.y + pad,
             width: self.width,
             height: self.height,
         }
     }
 
-    pub fn pad_bottom(self, pad: u32) -> Self {
+    pub fn pad_bottom(self, pad: i32) -> Self {
         Self {
             x: self.x,
             y: self.y,
             width: self.width,
-            height: self.height - pad,
+            height: (self.height as i32 - pad) as u32,
         }
     }
 
