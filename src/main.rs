@@ -678,6 +678,11 @@ fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
     }
 }
 
+fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
+    (!app.main_keyboard_override && layout.to_rect().contains_point(app.mouse_points()))
+        || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx))
+}
+
 fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Layout) -> bool {
     // draw card background/border
     let mut selected = false;
@@ -697,9 +702,9 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     // draw thumbnail
     draw_thumbnail(app, anime, image_layout);
 
-    if (!app.main_keyboard_override && layout.to_rect().contains_point(app.mouse_points()))
-        || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx))
-    {
+    //if (!app.main_keyboard_override && layout.to_rect().contains_point(app.mouse_points()))
+    //    || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx))
+    if is_card_selected(app, layout, idx) {
         selected = true;
         app.main_selected = Some(idx);
         app.canvas.set_draw_color(color_hex_a(0x303030, 0xAA));
