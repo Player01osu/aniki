@@ -128,6 +128,10 @@ impl Anime {
         &self.thumbnail
     }
 
+    pub fn set_thumbnail(&mut self, path: Option<String>) {
+        self.thumbnail = path;
+    }
+
     pub fn title(&self) -> String {
         self.metadata
             .as_ref()
