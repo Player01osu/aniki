@@ -111,7 +111,8 @@ pub struct App<'a, 'b> {
     pub mouse_x: i32,
     pub mouse_y: i32,
     pub mouse_moved: bool,
-    pub mouse_clicked: bool,
+    pub mouse_clicked_left: bool,
+    pub mouse_clicked_right: bool,
     pub resized: bool,
     pub keycode_map: BTreeMap<u32, bool>,
     pub keymod: keyboard::Mod,
@@ -753,7 +754,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
             }
         }
 
-        if !play_button && app.mouse_clicked {
+        if !play_button && app.mouse_clicked_left {
             let anime = anime.clone();
             app.episode_scroll = 0;
             app.set_screen(Screen::SelectEpisode(Rc::new(anime)));
@@ -1013,7 +1014,7 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
         None,
     );
 
-    app.mouse_clicked && layout.to_rect().contains_point(app.mouse_points())
+    app.mouse_clicked_left && layout.to_rect().contains_point(app.mouse_points())
 }
 
 fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
@@ -1119,7 +1120,7 @@ fn draw_episode(
     {
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout.to_rect()).unwrap();
-        if app.mouse_clicked {
+        if app.mouse_clicked_left {
             let mutable_anime = mostly_static.animes.get_anime(anime.filename()).unwrap();
             let paths = anime.find_episode_path(&episode);
             mutable_anime.update_watched(episode.to_owned()).unwrap();
@@ -1291,7 +1292,8 @@ impl<'a, 'b> App<'a, 'b> {
             mouse_x: 0,
             mouse_y: 0,
             mouse_moved: false,
-            mouse_clicked: false,
+            mouse_clicked_left: false,
+            mouse_clicked_right: false,
             resized: false,
 
             keycode_map: BTreeMap::new(),
@@ -1328,7 +1330,8 @@ impl<'a, 'b> App<'a, 'b> {
         }
 
         self.keycode_map.clear();
-        self.mouse_clicked = false;
+        self.mouse_clicked_left = false;
+        self.mouse_clicked_right = false;
         self.resized = false;
         self.mouse_moved = false;
     }
@@ -1381,8 +1384,11 @@ async fn main() {
                     ..
                 } => break 'running,
                 Event::MouseButtonDown { .. } => {}
-                Event::MouseButtonUp { .. } => {
-                    app.mouse_clicked = true;
+                Event::MouseButtonUp { mouse_btn: sdl2::mouse::MouseButton::Left, .. } => {
+                    app.mouse_clicked_left = true;
+                }
+                Event::MouseButtonUp { mouse_btn: sdl2::mouse::MouseButton::Right, .. } => {
+                    app.mouse_clicked_right = true;
                 }
                 Event::MouseMotion { x, y, .. } => {
                     app.mouse_moved = true;
