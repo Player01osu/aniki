@@ -107,9 +107,12 @@ pub struct App<'a, 'b> {
     pub image_manager: TextureManager<'a>,
     pub running: bool,
 
+    pub id: u32,
+
     pub main_scroll: i32,
     pub main_selected: Option<usize>,
     pub main_keyboard_override: bool,
+    pub main_extra_menu_id: Option<u32>,
 
     pub episode_scroll: i32,
 
@@ -683,6 +686,110 @@ fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
         || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx))
 }
 
+fn draw_card_extra_menu(app: &mut App, anime: &mut database::Anime, layout: Layout) -> bool {
+    let mut clicked = false;
+    let menu_button_pad_outer = 10;
+    let (change_title_layout, rest) = layout.split_hori(1, 3);
+    let (alias_title_layout, change_image_layout) = rest.split_hori(1, 2);
+    let change_title_layout =
+        change_title_layout.pad_outer(menu_button_pad_outer, menu_button_pad_outer);
+    let alias_title_layout =
+        alias_title_layout.pad_outer(menu_button_pad_outer, menu_button_pad_outer);
+    let change_image_layout =
+        change_image_layout.pad_outer(menu_button_pad_outer, menu_button_pad_outer);
+    let menu_button_style = Style::new(color_hex(0x909090), color_hex(0x202020))
+        .bg_hover_color(color_hex(0x404040))
+        .font_info(PLAY_BUTTON_FONT_INFO);
+
+    if draw_button(
+        app,
+        "Change title",
+        menu_button_style.clone(),
+        change_title_layout,
+    ) {
+        clicked = true;
+    }
+
+    if draw_button(
+        app,
+        "Alias title",
+        menu_button_style.clone(),
+        alias_title_layout,
+    ) {
+        clicked = true;
+    }
+
+    if draw_button(
+        app,
+        "Change image",
+        menu_button_style.clone(),
+        change_image_layout,
+    ) {
+        clicked = true;
+        let new_path = native_dialog::FileDialog::new()
+            .add_filter("Image", &["png", "jpg", "gif", "svg"])
+            .show_open_single_file().expect("Failed to open native file picker");
+        if let Some(new_path) = new_path {
+            anime.set_thumbnail(Some(new_path.to_string_lossy().to_string()));
+        }
+    }
+
+    clicked
+}
+
+fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layout) -> bool {
+    let mut clicked = false;
+    let play_button_pad_outer = 10;
+    let (play_current_layout, rest) = layout.split_hori(1, 3);
+    let (play_next_layout, _more_info_layout) = rest.split_hori(1, 2);
+    let play_current_layout =
+        play_current_layout.pad_outer(play_button_pad_outer, play_button_pad_outer);
+
+    let play_next_layout = play_next_layout.pad_outer(play_button_pad_outer, play_button_pad_outer);
+
+    let play_button_style = Style::new(color_hex(0x909090), color_hex(0x202020))
+        .bg_hover_color(color_hex(0x404040))
+        .font_info(PLAY_BUTTON_FONT_INFO);
+
+    let (current_ep, current_path) = anime.current_episode_path();
+
+    if draw_button(
+        app,
+        // TODO: Explore string internment techniques for
+        // these formating operations.
+        //
+        // Perhaps using an enum identifier and the episode,
+        // you could save a hash of this string and clone
+        // a reference to it rather than constantly
+        // constructing the same copy of the string.
+        //
+        // https://en.wikipedia.org/wiki/String_interning
+        &format!("Play Current: {}", current_ep),
+        play_button_style.clone(),
+        play_current_layout,
+    ) {
+        clicked = true;
+        open_url(&current_path[0]).unwrap();
+        anime.update_watched(current_ep).unwrap();
+        app.main_scroll = 0;
+    }
+
+    if let Some((ep, path)) = anime.next_episode_path().unwrap() {
+        if draw_button(
+            app,
+            &format!("Play Next: {}", ep),
+            play_button_style.clone(),
+            play_next_layout,
+        ) {
+            clicked = true;
+            open_url(&path[0]).unwrap();
+            anime.update_watched(ep).unwrap();
+            app.main_scroll = 0;
+        }
+    }
+    clicked
+}
+
 fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Layout) -> bool {
     // draw card background/border
     let mut selected = false;
@@ -710,61 +817,27 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         app.canvas.set_draw_color(color_hex_a(0x303030, 0xAA));
         app.canvas.fill_rect(image_layout.to_rect()).unwrap();
 
-        let play_button_pad_outer = 10;
-        let (play_current_layout, rest) = top_layout.split_hori(1, 3);
-        let (play_next_layout, _more_info_layout) = rest.split_hori(1, 2);
-        let play_current_layout =
-            play_current_layout.pad_outer(play_button_pad_outer, play_button_pad_outer);
-
-        let play_next_layout =
-            play_next_layout.pad_outer(play_button_pad_outer, play_button_pad_outer);
-
-        let play_button_style = Style::new(color_hex(0x909090), color_hex(0x202020))
-            .bg_hover_color(color_hex(0x404040))
-            .font_info(PLAY_BUTTON_FONT_INFO);
-
-        let mut play_button = false;
-        let (current_ep, current_path) = anime.current_episode_path();
-        if draw_button(
-            app,
-            // TODO: Explore string internment techniques for
-            // these formating operations.
-            //
-            // Perhaps using an enum identifier and the episode,
-            // you could save a hash of this string and clone
-            // a reference to it rather than constantly
-            // constructing the same copy of the string.
-            //
-            // https://en.wikipedia.org/wiki/String_interning
-            &format!("Play Current: {}", current_ep),
-            play_button_style.clone(),
-            play_current_layout,
-        ) {
-            open_url(&current_path[0]).unwrap();
-            anime.update_watched(current_ep).unwrap();
-            app.main_scroll = 0;
-            play_button = true;
-        }
-
-        if let Some((ep, path)) = anime.next_episode_path().unwrap() {
-            if draw_button(
-                app,
-                &format!("Play Next: {}", ep),
-                play_button_style.clone(),
-                play_next_layout,
-            ) {
-                open_url(&path[0]).unwrap();
-                anime.update_watched(ep).unwrap();
-                app.main_scroll = 0;
-                play_button = true;
+        let button_pressed = if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
+            draw_card_extra_menu(app, anime, top_layout)
+        } else {
+            draw_card_hover_menu(app, anime, top_layout)
+        };
+        if !button_pressed && app.mouse_clicked_right {
+            // Toggle extra menu
+            match app.main_extra_menu_id {
+                Some(_) => app.main_extra_menu_id = None,
+                None => app.main_extra_menu_id = Some(app.id),
             }
         }
 
-        if !play_button && app.mouse_clicked_left {
+        if !button_pressed && app.mouse_clicked_left {
             let anime = anime.clone();
             app.episode_scroll = 0;
             app.set_screen(Screen::SelectEpisode(Rc::new(anime)));
         }
+    } else if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
+        app.main_extra_menu_id;
+        app.main_extra_menu_id = None;
     }
 
     // draw title background
@@ -932,6 +1005,7 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
             if grid_space.y > window_height as i32 {
                 break;
             }
+            app.id += 1;
             if draw_card(app, anime, idx, *grid_space) {
                 any = true;
             }
@@ -940,7 +1014,8 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
 
     // Draw scrollbar
     if let Some(last) = card_layouts.last() {
-        let scale = scrollbar_layout.height as f32 / (last.y + last.height as i32 - app.main_scroll) as f32;
+        let scale =
+            scrollbar_layout.height as f32 / (last.y + last.height as i32 - app.main_scroll) as f32;
         if scale < 1.0 {
             let height = (scrollbar_layout.height as f32 * scale) as u32;
             app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
@@ -1040,9 +1115,8 @@ fn draw_top_panel_with_metadata(
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
             let path = thumbnail.clone().into_boxed_str();
-            let (image_width, image_height) = app
-                .image_manager
-                .query_size(Image::FromPath(path.clone()));
+            let (image_width, image_height) =
+                app.image_manager.query_size(Image::FromPath(path.clone()));
             let (image_layout, description_layout) =
                 layout.split_vert(image_width * layout.height / image_height, layout.width);
             draw_image_float(app, Image::FromPath(path), image_layout, None);
@@ -1052,7 +1126,10 @@ fn draw_top_panel_with_metadata(
     };
     let (title_layout, description_layout) = description_layout.split_hori(2, 7);
     let (title_layout, description_header_layout) = title_layout.split_hori(1, 2);
-    let (description_layout, directory_name_layout) = description_layout.split_hori(description_layout.height - font_height, description_layout.height);
+    let (description_layout, directory_name_layout) = description_layout.split_hori(
+        description_layout.height - font_height,
+        description_layout.height,
+    );
     draw_text(
         app,
         H1_FONT_INFO,
@@ -1227,11 +1304,11 @@ fn draw_episode_list(
         app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
         app.canvas
             .fill_rect(rect!(
-            scrollbar_layout.x,
-            scrollbar_layout.y + (-1.0 * app.episode_scroll as f32 * scale) as i32,
-            scrollbar_layout.width,
-            height
-        ))
+                scrollbar_layout.x,
+                scrollbar_layout.y + (-1.0 * app.episode_scroll as f32 * scale) as i32,
+                scrollbar_layout.width,
+                height
+            ))
             .unwrap();
     } else {
         app.episode_scroll = 0;
@@ -1287,9 +1364,12 @@ impl<'a, 'b> App<'a, 'b> {
             image_manager: TextureManager::new(&texture_creator),
             running: true,
 
+            id: 0,
+
             main_keyboard_override: false,
             main_scroll: 0,
             main_selected: None,
+            main_extra_menu_id: None,
 
             episode_scroll: 0,
 
@@ -1338,6 +1418,7 @@ impl<'a, 'b> App<'a, 'b> {
         self.mouse_clicked_right = false;
         self.resized = false;
         self.mouse_moved = false;
+        self.id = 0;
     }
 }
 
@@ -1365,8 +1446,7 @@ async fn main() {
     let texture_creator = canvas.texture_creator();
     let ttf_ctx = sdl2::ttf::init().unwrap();
     let mut app = App::new(canvas, &ttf_ctx, &texture_creator);
-    let mut database =
-        Database::new(DATABASE_PATH, VIDEO_DIRECTORY.to_owned()).unwrap();
+    let mut database = Database::new(DATABASE_PATH, VIDEO_DIRECTORY.to_owned()).unwrap();
     database.retrieve_images("thumbnails/").await.unwrap();
     let mut mostly_static = MostlyStatic::new(database);
 
@@ -1442,7 +1522,8 @@ async fn main() {
     }
 
     // Do not write to cache for development
-    #[cfg(debug_assertions)] {
+    #[cfg(debug_assertions)]
+    {
         return;
     }
     mostly_static.animes.write("./anime-cache.db").unwrap();
