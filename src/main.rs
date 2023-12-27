@@ -1232,7 +1232,7 @@ fn draw_episode(
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout.to_rect()).unwrap();
         if app.mouse_clicked_left {
-            let mutable_anime = mostly_static.animes.get_anime(anime.filename()).unwrap();
+            let mutable_anime = mostly_static.animes.get_anime(anime.filename()).expect("Should contain anime");
             let paths = anime.find_episode_path(&episode);
             mutable_anime.update_watched(episode.to_owned()).unwrap();
             let anime = Rc::new(mutable_anime.clone());
