@@ -86,6 +86,11 @@ const H2_FONT_PT: u16 = 20;
 const H2_FONT: &str = TITLE_FONT;
 const H2_FONT_INFO: (&str, u16) = (H2_FONT, H2_FONT_PT);
 
+type FontInfo = (&'static str, u16);
+type WidthRatio = u32;
+type HeightRatio = u32;
+type TextManagerKey = (String, FontInfo, u32, Option<u32>);
+
 macro_rules! rect(
     ($x:expr, $y:expr, $w:expr, $h:expr) => {
         Rect::new($x as i32, $y as i32, $w as u32, $h as u32)
@@ -138,9 +143,6 @@ pub struct Layout {
     width: u32,
     height: u32,
 }
-
-type WidthRatio = u32;
-type HeightRatio = u32;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Image {
@@ -216,7 +218,6 @@ impl<'a, 'b> FontManager<'a, 'b> {
     }
 }
 
-type TextManagerKey = (String, FontInfo, u32, Option<u32>);
 pub struct TextManager<'a, 'b> {
     texture_creator: &'a TextureCreator<WindowContext>,
     font_manager: FontManager<'a, 'b>,
@@ -804,8 +805,6 @@ fn draw_text(
         app.canvas.set_clip_rect(None)
     };
 }
-
-type FontInfo = (&'static str, u16);
 
 fn draw_text_centered(
     app: &mut App,
