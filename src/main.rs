@@ -441,13 +441,14 @@ impl Layout {
         height: u32,
         x_pad: i32,
         y_pad: i32,
-        wrap_width: u32,
         n: usize,
     ) -> (usize, Vec<Self>) {
+        self.width += x_pad as u32;
+        let wrap_width = self.width;
         let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
         let max_width = (width as i32 + x_pad) * idx_wrap;
         self.x = (wrap_width as i32 - max_width) / 2;
-        self.split_grid(width, height, x_pad, y_pad, wrap_width, n)
+        self.split_grid(width, height, x_pad, y_pad, n)
     }
 
     pub fn split_grid(
@@ -456,9 +457,9 @@ impl Layout {
         height: u32,
         x_pad: i32,
         y_pad: i32,
-        wrap_width: u32,
         n: usize,
     ) -> (usize, Vec<Self>) {
+        let wrap_width = self.width;
         let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
         if idx_wrap == 0 {
             return (1, vec![self]);
@@ -933,15 +934,14 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
 
     // TODO: Cache expensive layouts
     let (cards_per_row, card_layouts) = card_layouts
-        .pad_top(CARD_Y_PAD_OUTER as u32)
-        .pad_bottom(CARD_Y_PAD_OUTER as u32)
+        .pad_top(CARD_Y_PAD_OUTER)
+        .pad_bottom(CARD_Y_PAD_OUTER)
         .scroll_y(app.main_scroll)
         .split_grid_center(
             CARD_WIDTH,
             CARD_HEIGHT,
             CARD_X_PAD_INNER,
             CARD_Y_PAD_INNER,
-            card_layouts.width,
             animes.len() - 1,
         );
 
