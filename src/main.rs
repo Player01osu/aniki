@@ -71,6 +71,9 @@ const DESCRIPTION_FONT_PT: u16 = 16;
 const DESCRIPTION_FONT_INFO: (&str, u16) = (DESCRIPTION_FONT, DESCRIPTION_FONT_PT);
 const DESCRIPTION_FONT_COLOR: u32 = TITLE_FONT_COLOR;
 
+const DIRECTORY_NAME_FONT_INFO: (&str, u16) = DESCRIPTION_FONT_INFO;
+const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
+
 const DEFAULT_BUTTON_FONT_PT: u16 = 24;
 const DEFAULT_BUTTON_FONT: &str = TITLE_FONT;
 const DEFAULT_BUTTON_FONT_INFO: (&str, u16) = (DEFAULT_BUTTON_FONT, DEFAULT_BUTTON_FONT_PT);
@@ -1028,6 +1031,7 @@ fn draw_top_panel_with_metadata(
     layout: Layout,
     metadata: &AnimeDatabaseData,
 ) {
+    let (_, font_height) = app.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
             let path = thumbnail.clone().into_boxed_str();
@@ -1043,6 +1047,7 @@ fn draw_top_panel_with_metadata(
     };
     let (title_layout, description_layout) = description_layout.split_hori(2, 7);
     let (title_layout, description_header_layout) = title_layout.split_hori(1, 2);
+    let (description_layout, directory_name_layout) = description_layout.split_hori(description_layout.height - font_height, description_layout.height);
     draw_text(
         app,
         H1_FONT_INFO,
@@ -1073,6 +1078,18 @@ fn draw_top_panel_with_metadata(
         Some(description_layout.width),
         Some(description_layout.height),
     );
+    app.canvas.set_clip_rect(directory_name_layout.to_rect());
+    draw_text_centered(
+        app,
+        DIRECTORY_NAME_FONT_INFO,
+        anime.filename(),
+        color_hex(DIRECTORY_NAME_FONT_COLOR),
+        directory_name_layout.x + directory_name_layout.width as i32 / 2,
+        directory_name_layout.y + directory_name_layout.height as i32 / 2,
+        None,
+        Some(directory_name_layout.height),
+    );
+    app.canvas.set_clip_rect(None);
 }
 
 fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Layout) {
@@ -1197,6 +1214,7 @@ fn draw_episode_list(
         );
     }
     app.canvas.set_clip_rect(None);
+
     // Draw scrollbar
     let scale = scrollbar_layout.height as f32 / (episode_height as f32 * episode_count as f32);
     if scale < 1.0 {
