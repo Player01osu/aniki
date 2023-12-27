@@ -599,9 +599,17 @@ fn color_hex(hex: u32) -> Color {
     Color::RGB(r, g, b)
 }
 
-fn color_hex_a(hex: u32, alpha: u8) -> Color {
-    let (r, g, b) = rgb_hex(hex);
-    Color::RGBA(r, g, b, alpha)
+fn color_hex_a(hex: u32) -> Color {
+    let r = ((hex & 0xFF000000) >> 0x18) as u8;
+    let g = ((hex & 0x00FF0000) >> 0x10) as u8;
+    let b = ((hex & 0x0000FF00) >> 0x08) as u8;
+    let a = ((hex & 0x000000FF) >> 0x00) as u8;
+    Color::RGBA(r, g, b, a)
+}
+
+#[test]
+fn color_hex_a_test_0() {
+    assert_eq!(color_hex_a(0xDEADBEEF), Color::RGBA(0xDE, 0xAD, 0xBE, 0xEF));
 }
 
 // TODO: Add filler image if image not found
@@ -829,7 +837,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     if is_card_selected(app, layout, idx) {
         selected = true;
         app.main_selected = Some(idx);
-        app.canvas.set_draw_color(color_hex_a(0x303030, 0xAA));
+        app.canvas.set_draw_color(color_hex_a(0x303030AA));
         app.canvas.fill_rect(image_layout.to_rect()).unwrap();
 
         let button_pressed = if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
