@@ -818,18 +818,14 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
 fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Layout) -> bool {
     // draw card background/border
     let mut selected = false;
-    let title = anime.title();
     let card_bg_color = color_hex(0x1C1C1C);
     let card_fg_color = color_hex(TITLE_FONT_COLOR);
-    let (text_width, text_height) = text_size(app, TITLE_FONT_INFO, &title);
+    let (text_width, text_height) = {
+        let title = anime.title();
+        text_size(app, TITLE_FONT_INFO, title)
+    };
     let (top_layout, text_layout) = layout.split_hori(layout.height - text_height, layout.height);
     let image_layout = layout;
-
-    let title = if text_width > layout.width - 35 {
-        format!("{}...", title.split_at(15).0)
-    } else {
-        title
-    };
 
     // draw thumbnail
     draw_thumbnail(app, anime, image_layout);
@@ -864,6 +860,14 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     }
 
     // draw title background
+    let title = anime.title();
+    let title = if text_width > layout.width - 35 {
+        //title.split_at(15).0
+        format!("{}...", title.split_at(15).0)
+    } else {
+        //title
+        title.to_string()
+    };
     app.canvas.set_draw_color(card_bg_color);
     app.canvas.fill_rect(text_layout.to_rect()).unwrap();
 

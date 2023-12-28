@@ -132,11 +132,11 @@ impl Anime {
         self.thumbnail = path;
     }
 
-    pub fn title(&self) -> String {
+    pub fn title(&self) -> &str {
         self.metadata
             .as_ref()
-            .map(|m| m.title().to_string())
-            .unwrap_or(self.filename.clone())
+            .map(|m| m.title())
+            .unwrap_or(&self.filename)
     }
 
     pub fn len(&self) -> usize {
