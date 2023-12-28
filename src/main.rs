@@ -34,7 +34,7 @@ const DEBUG_COLOR: u32 = 0xFF0000;
 const WINDOW_WIDTH: u32 = 1280;
 const WINDOW_HEIGHT: u32 = 720;
 
-const BACKGROUND_COLOR: u32 = 0x101010;
+const BACKGROUND_COLOR: u32 = 0x1B1B1B;
 
 const LIBERATION_FONT_BYTES: &[u8] =
     include_bytes!(r"../fonts/liberation-fonts-ttf-2.1.5/LiberationSans-Regular.ttf");
