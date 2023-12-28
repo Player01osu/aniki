@@ -1230,15 +1230,8 @@ fn draw_episode(
         if app.mouse_clicked_left {
             {
                 let mut mutable_anime = anime.borrow_mut();
-                //let mutable_anime = mostly_static
-                //    .animes
-                //    .get_anime(anime.borrow().filename())
-                //    .expect("Should contain anime");
-                //let paths = anime.find_episode_path(&episode);
                 mutable_anime.update_watched(episode.to_owned()).unwrap();
             }
-            //let anime = Rc::new(mutable_anime.clone());
-            //app.set_screen(Screen::SelectEpisode(anime));
             let anime = anime.borrow();
             let paths = anime.find_episode_path(&episode);
             app.episode_scroll = 0;
