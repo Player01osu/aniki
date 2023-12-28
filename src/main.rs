@@ -91,6 +91,11 @@ const H2_FONT_PT: u16 = 20;
 const H2_FONT: &str = TITLE_FONT;
 const H2_FONT_INFO: (&str, u16) = (H2_FONT, H2_FONT_PT);
 
+const MOUSE_CLICK_LEFT: u8 = 0x00000001;
+const MOUSE_CLICK_RIGHT: u8 = 0x00000002;
+const MOUSE_MOVED: u8 = 0x00000004;
+const RESIZED: u8 = 0x00000008;
+
 type FontInfo = (&'static str, u16);
 type WidthRatio = u32;
 type HeightRatio = u32;
@@ -102,9 +107,6 @@ macro_rules! rect(
     }
 );
 
-// TODO: Quite a few of these booleans can be turned into a bitmap flag.
-//
-// Explore if this performance optimization is justifiable.
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
     pub screen: Screen,
@@ -121,12 +123,15 @@ pub struct App<'a, 'b> {
 
     pub episode_scroll: i32,
 
+    // bitfield for:
+    //   mouse_moved
+    //   mouse_clicked_left
+    //   mouse_clicked_right
+    //   resized
+    state_flag: u8,
+
     pub mouse_x: i32,
     pub mouse_y: i32,
-    pub mouse_moved: bool,
-    pub mouse_clicked_left: bool,
-    pub mouse_clicked_right: bool,
-    pub resized: bool,
     pub keycode_map: BTreeMap<u32, bool>,
     pub keymod: keyboard::Mod,
 }
@@ -840,7 +845,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         } else {
             draw_card_hover_menu(app, anime, top_layout)
         };
-        if !button_pressed && app.mouse_clicked_right {
+        if !button_pressed && app.mouse_clicked_right() {
             // Toggle extra menu
             match app.main_extra_menu_id {
                 Some(_) => app.main_extra_menu_id = None,
@@ -848,7 +853,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
             }
         }
 
-        if !button_pressed && app.mouse_clicked_left {
+        if !button_pressed && app.mouse_clicked_left() {
             let anime = anime.filename().into();
             app.episode_scroll = 0;
             app.set_screen(Screen::SelectEpisode(anime));
@@ -1003,7 +1008,7 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         }
     }
 
-    if app.resized {
+    if app.resized() {
         if let Some(last) = card_layouts.last() {
             if (last.y + last.height as i32) < window_height as i32 {
                 app.main_scroll =
@@ -1111,7 +1116,7 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
         None,
     );
 
-    app.mouse_clicked_left && layout.to_rect().contains_point(app.mouse_points())
+    app.mouse_clicked_left() && layout.to_rect().contains_point(app.mouse_points())
 }
 
 fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
@@ -1227,7 +1232,7 @@ fn draw_episode(
     {
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout.to_rect()).unwrap();
-        if app.mouse_clicked_left {
+        if app.mouse_clicked_left() {
             let anime = mostly_static.animes.get_anime(anime.filename()).unwrap();
             anime.update_watched(episode.to_owned()).unwrap();
             let paths = anime.find_episode_path(&episode);
@@ -1405,12 +1410,10 @@ impl<'a, 'b> App<'a, 'b> {
 
             episode_scroll: 0,
 
+            state_flag: 0,
+
             mouse_x: 0,
             mouse_y: 0,
-            mouse_moved: false,
-            mouse_clicked_left: false,
-            mouse_clicked_right: false,
-            resized: false,
 
             keycode_map: BTreeMap::new(),
             keymod: keyboard::Mod::NOMOD,
@@ -1440,16 +1443,45 @@ impl<'a, 'b> App<'a, 'b> {
             .unwrap_or(false)
     }
 
+    pub fn mouse_click_left_true(&mut self) {
+        self.state_flag |= MOUSE_CLICK_LEFT;
+    }
+
+    pub fn mouse_click_right_true(&mut self) {
+        self.state_flag |= MOUSE_CLICK_RIGHT;
+    }
+
+    pub fn mouse_moved_true(&mut self) {
+        self.state_flag |= MOUSE_MOVED;
+    }
+
+    pub fn resized_true(&mut self) {
+        self.state_flag |= RESIZED;
+    }
+
+    pub fn mouse_clicked_left(&self) -> bool {
+        self.state_flag & MOUSE_CLICK_LEFT != 0
+    }
+
+    pub fn mouse_clicked_right(&self) -> bool {
+        self.state_flag & MOUSE_CLICK_RIGHT != 0
+    }
+
+    pub fn mouse_moved(&self) -> bool {
+        self.state_flag & MOUSE_MOVED != 0
+    }
+
+    pub fn resized(&self) -> bool {
+        self.state_flag & RESIZED != 0
+    }
+
     pub fn reset_frame_state(&mut self) {
-        if self.mouse_moved {
+        if self.mouse_moved() {
             self.main_keyboard_override = false;
         }
 
         self.keycode_map.clear();
-        self.mouse_clicked_left = false;
-        self.mouse_clicked_right = false;
-        self.resized = false;
-        self.mouse_moved = false;
+        self.state_flag = 0;
         self.id = 0;
     }
 }
@@ -1504,16 +1536,16 @@ async fn main() {
                     mouse_btn: sdl2::mouse::MouseButton::Left,
                     ..
                 } => {
-                    app.mouse_clicked_left = true;
+                    app.mouse_click_left_true();
                 }
                 Event::MouseButtonUp {
                     mouse_btn: sdl2::mouse::MouseButton::Right,
                     ..
                 } => {
-                    app.mouse_clicked_right = true;
+                    app.mouse_click_right_true();
                 }
                 Event::MouseMotion { x, y, .. } => {
-                    app.mouse_moved = true;
+                    app.mouse_moved_true();
                     app.mouse_x = x;
                     app.mouse_y = y;
                 }
@@ -1537,7 +1569,7 @@ async fn main() {
                     win_event: sdl2::event::WindowEvent::Resized(_, _),
                     ..
                 } => {
-                    app.resized = true;
+                    app.resized_true();
                     app.mouse_x = 0;
                     app.mouse_y = 0;
                 }
