@@ -830,8 +830,6 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     // draw thumbnail
     draw_thumbnail(app, anime, image_layout);
 
-    //if (!app.main_keyboard_override && layout.to_rect().contains_point(app.mouse_points()))
-    //    || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx))
     if is_card_selected(app, layout, idx) {
         selected = true;
         app.main_selected = Some(idx);

@@ -289,9 +289,6 @@ impl Anime {
             })),
         }
     }
-
-    //pub fn paths(&self) -> &[String] {
-    //}
 }
 
 fn dir_modified_time(path: impl AsRef<Path>) -> u64 {
