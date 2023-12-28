@@ -410,7 +410,7 @@ impl<'a> TextureManager<'a> {
 #[derive(Clone, Debug)]
 pub enum Screen {
     Main,
-    SelectEpisode(Rc<str>),
+    SelectEpisode(Box<str>),
 }
 
 impl Layout {
@@ -1342,14 +1342,8 @@ fn draw_episode_list(
     }
 }
 
-fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, filename: Rc<str>) {
-    // Anime reference will never get changed while drawing frame
-    let anime: &database::Anime = unsafe {
-        let ptr = mostly_static.animes.get_anime(filename).unwrap() as *const database::Anime;
-        std::mem::transmute(ptr)
-    };
+fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, anime: &database::Anime) {
     let (window_width, window_height) = app.canvas.window().size();
-
     // TODO: Think about abstracting scrolling type windows out
     // into a function or data structure
     let layout = Layout::new(
@@ -1364,7 +1358,7 @@ fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, filename: 
     let top_description_layout = top_description_layout.pad_bottom(10);
     let (back_button_layout, _) = top_left_layout.split_hori(10, 11);
 
-    draw_top_panel_anime_expand(app, &anime, top_description_layout);
+    draw_top_panel_anime_expand(app, anime, top_description_layout);
     draw_back_button(app, Screen::Main, back_button_layout.pad_right(10));
     draw_episode_list(app, mostly_static, anime, bottom_description_layout);
 }
@@ -1372,8 +1366,13 @@ fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, filename: 
 fn draw(app: &mut App, mostly_static: &mut MostlyStatic) {
     match app.screen {
         Screen::Main => draw_main(app, mostly_static),
-        Screen::SelectEpisode(ref anime) => {
-            draw_anime_expand(app, mostly_static, Rc::clone(anime))
+        Screen::SelectEpisode(ref filename) => {
+            // Anime reference will never get changed while drawing frame
+            let anime: &database::Anime = unsafe {
+                let ptr = mostly_static.animes.get_anime(filename).unwrap() as *const database::Anime;
+                std::mem::transmute(ptr)
+            };
+            draw_anime_expand(app, mostly_static, anime);
         }
     }
 }
