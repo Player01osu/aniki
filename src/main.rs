@@ -36,10 +36,11 @@ const WINDOW_HEIGHT: u32 = 720;
 
 const BACKGROUND_COLOR: u32 = 0x101010;
 
-const LIBERATION_FONT: &[u8] =
+const LIBERATION_FONT_BYTES: &[u8] =
     include_bytes!(r"../fonts/liberation-fonts-ttf-2.1.5/LiberationSans-Regular.ttf");
 
-const PLAY_ICON: &[u8] = include_bytes!(r"../assets/play-icon.svg");
+const PLAY_ICON: &str = "0";
+const PLAY_ICON_IMAGE: &[u8] = include_bytes!(r"../assets/play-icon.svg");
 
 const CARD_WIDTH: u32 = 200;
 const CARD_HEIGHT: u32 = 300;
@@ -50,14 +51,16 @@ const CARD_Y_PAD_INNER: i32 = 20;
 
 const SCROLLBAR_COLOR: u32 = 0x2A2A2A;
 
+const LIBERATION_FONT: &str = "0";
+
 //const TITLE_FONT: &'static str = r"./fonts/OpenSans/OpenSans-VariableFont_wdth,wght.ttf";
-const TITLE_FONT: &str = r"LiberationSans-Regular.ttf";
+const TITLE_FONT: &str = LIBERATION_FONT;
 const TITLE_FONT_PT: u16 = 16;
 const TITLE_FONT_INFO: (&str, u16) = (TITLE_FONT, TITLE_FONT_PT);
 const TITLE_FONT_COLOR: u32 = 0xABABAB;
 
 //const PLAY_BUTTON_FONT: &'static str = r"./fonts/OpenSans/OpenSans-VariableFont_wdth,wght.ttf";
-const PLAY_BUTTON_FONT: &str = r"LiberationSans-Regular.ttf";
+const PLAY_BUTTON_FONT: &str = LIBERATION_FONT;
 const PLAY_BUTTON_FONT_PT: u16 = 16;
 const PLAY_BUTTON_FONT_INFO: (&str, u16) = (PLAY_BUTTON_FONT, PLAY_BUTTON_FONT_PT);
 const PLAY_BUTTON_FONT_COLOR: u32 = TITLE_FONT_COLOR;
@@ -149,15 +152,9 @@ pub struct Layout {
     height: u32,
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub enum Image {
-    PlayIcon,
-    FromPath(Box<str>),
-}
-
 pub struct TextureManager<'a> {
     texture_creator: &'a TextureCreator<WindowContext>,
-    cache: BTreeMap<(Image, Option<(WidthRatio, HeightRatio)>), Rc<Texture<'a>>>,
+    cache: BTreeMap<(String, Option<(WidthRatio, HeightRatio)>), Rc<Texture<'a>>>,
 }
 
 pub struct FontManager<'a, 'b> {
@@ -206,9 +203,9 @@ impl<'a, 'b> FontManager<'a, 'b> {
             Entry::Occupied(v) => Rc::clone(v.get()),
             Entry::Vacant(v) => {
                 let mut font = match font {
-                    r"LiberationSans-Regular.ttf" => self
+                    LIBERATION_FONT => self
                         .ttf_ctx
-                        .load_font_from_rwops(RWops::from_bytes(LIBERATION_FONT).unwrap(), pt)
+                        .load_font_from_rwops(RWops::from_bytes(LIBERATION_FONT_BYTES).unwrap(), pt)
                         .unwrap(),
                     _ => self.ttf_ctx.load_font(font, pt).unwrap(),
                 };
@@ -319,7 +316,7 @@ impl<'a> TextureManager<'a> {
 
     pub fn load(
         &mut self,
-        image: Image,
+        path: impl AsRef<str>,
         crop_pos: Option<(i32, i32)>,
         ratio: Option<(u32, u32)>,
     ) -> Result<Rc<Texture<'a>>> {
@@ -328,15 +325,15 @@ impl<'a> TextureManager<'a> {
         // I want images to be blurred bilinearly since they currently have little
         // pre-processing done prior to scaling down and bliting onto canvas.
 
-        match self.cache.entry((image.clone(), ratio)) {
+        match self.cache.entry((path.as_ref().to_string(), ratio)) {
             Entry::Occupied(v) => Ok(Rc::clone(v.get())),
             Entry::Vacant(v) => {
-                let raw_img = match image {
-                    Image::PlayIcon => RWops::from_bytes(PLAY_ICON)
+                let raw_img = match path.as_ref() {
+                    PLAY_ICON => RWops::from_bytes(PLAY_ICON_IMAGE)
                         .expect("Failed to load binary image")
                         .load()
                         .map_err(|e| anyhow::anyhow!("{e}"))?,
-                    Image::FromPath(path) => Surface::from_file(path.as_ref())
+                    path => Surface::from_file(path)
                         .map_err(|e| anyhow::anyhow!("{e}"))
                         .with_context(|| "Could not load iamge")?,
                 };
@@ -404,8 +401,8 @@ impl<'a> TextureManager<'a> {
         }
     }
 
-    pub fn query_size(&mut self, image: Image) -> Result<(u32, u32)> {
-        let TextureQuery { width, height, .. } = self.load(image, None, None)?.query();
+    pub fn query_size(&mut self, path: impl AsRef<str>) -> Result<(u32, u32)> {
+        let TextureQuery { width, height, .. } = self.load(path, None, None)?.query();
         Ok((width, height))
     }
 }
@@ -613,10 +610,10 @@ fn color_hex_a_test_0() {
 }
 
 // TODO: Add filler image if image not found
-fn draw_image_clip(app: &mut App, image: Image, layout: Layout) -> Result<()> {
+fn draw_image_clip(app: &mut App, path: impl AsRef<str>, layout: Layout) -> Result<()> {
     let texture = app
         .image_manager
-        .load(image, None, Some((layout.width, layout.height)))?;
+        .load(path, None, Some((layout.width, layout.height)))?;
     let TextureQuery {
         width: mut image_width,
         height: mut image_height,
@@ -644,11 +641,11 @@ fn draw_image_clip(app: &mut App, image: Image, layout: Layout) -> Result<()> {
 // TODO: Add filler image if image not found
 fn draw_image_float(
     app: &mut App,
-    image: Image,
+    path: impl AsRef<str>,
     layout: Layout,
     padding: Option<(i32, i32)>,
 ) -> Result<()> {
-    let texture = app.image_manager.load(image, None, None)?;
+    let texture = app.image_manager.load(path, None, None)?;
     let TextureQuery {
         width: mut image_width,
         height: mut image_height,
@@ -685,7 +682,7 @@ fn draw_image_float(
 
 fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
     if let Some(path) = anime.thumbnail() {
-        if draw_image_clip(app, Image::FromPath(path.clone().into_boxed_str()), layout).is_ok() {
+        if draw_image_clip(app, path, layout).is_ok() {
             return;
         }
     }
@@ -1138,12 +1135,10 @@ fn draw_top_panel_with_metadata(
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
             let path = thumbnail.clone().into_boxed_str();
-            if let Ok((image_width, image_height)) =
-                app.image_manager.query_size(Image::FromPath(path.clone()))
-            {
+            if let Ok((image_width, image_height)) = app.image_manager.query_size(&path) {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height / image_height, layout.width);
-                let _ = draw_image_float(app, Image::FromPath(path), image_layout, None);
+                let _ = draw_image_float(app, path, image_layout, None);
                 description_layout.pad_outer(10, 10)
             } else {
                 layout
@@ -1219,7 +1214,7 @@ fn draw_episode(
 ) {
     let (play_width, play_height) = app
         .image_manager
-        .query_size(Image::PlayIcon)
+        .query_size(PLAY_ICON)
         .expect("Failed to load image");
     let (play_layout, ep_name_layout) = layout
         .pad_outer(0, 5)
@@ -1232,7 +1227,10 @@ fn draw_episode(
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout.to_rect()).unwrap();
         if app.mouse_clicked_left {
-            let mutable_anime = mostly_static.animes.get_anime(anime.filename()).expect("Should contain anime");
+            let mutable_anime = mostly_static
+                .animes
+                .get_anime(anime.filename())
+                .expect("Should contain anime");
             let paths = anime.find_episode_path(&episode);
             mutable_anime.update_watched(episode.to_owned()).unwrap();
             let anime = Rc::new(mutable_anime.clone());
@@ -1241,7 +1239,7 @@ fn draw_episode(
             open_url(&paths[0]).unwrap();
         }
     }
-    let _ = draw_image_float(app, Image::PlayIcon, play_layout, Some((10, 0)));
+    let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)));
     draw_text(
         app,
         BACK_BUTTON_FONT_INFO,
