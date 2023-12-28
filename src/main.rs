@@ -1378,7 +1378,7 @@ fn draw(app: &mut App, mostly_static: &mut MostlyStatic) {
         Screen::SelectEpisode(ref filename) => {
             // Anime reference will never get changed while drawing frame
             let anime: &database::Anime = unsafe {
-                let ptr = mostly_static.animes.get_anime(filename).unwrap() as *const database::Anime;
+                let ptr = mostly_static.animes.get_anime(filename).unwrap();
                 std::mem::transmute(ptr)
             };
             draw_anime_expand(app, mostly_static, anime);
