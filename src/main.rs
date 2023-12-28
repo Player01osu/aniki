@@ -1,6 +1,8 @@
+#![allow(unreachable_code)]
 #![allow(dead_code)]
 use anyhow::Context;
 use anyhow::Result;
+use config::Config;
 use database::episode::Episode;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
@@ -24,10 +26,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 mod database;
-
-// Change this to where you keep your anime
-const VIDEO_DIRECTORY: &[&str] = &["/home/bruh/Videos/not-anime"];
-const DATABASE_PATH: &str = "./anime-cache.db";
+mod config;
 
 const DEBUG_COLOR: u32 = 0xFF0000;
 
@@ -1492,6 +1491,11 @@ impl<'a, 'b> App<'a, 'b> {
 
 #[tokio::main]
 async fn main() {
+    let cfg = Config::parse_cfg();
+    let database_path = cfg.database_path().to_string_lossy();
+    let thumbnail_path = cfg.thumbnail_path().to_string_lossy();
+    let video_paths = cfg.video_paths().into_iter().map(|v| v.to_string_lossy().to_string()).collect();
+
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     video_subsystem.enable_screen_saver();
@@ -1514,8 +1518,8 @@ async fn main() {
     let texture_creator = canvas.texture_creator();
     let ttf_ctx = sdl2::ttf::init().unwrap();
     let mut app = App::new(canvas, &ttf_ctx, &texture_creator);
-    let mut database = Database::new(DATABASE_PATH, VIDEO_DIRECTORY.to_owned()).unwrap();
-    database.retrieve_images("thumbnails/").await.unwrap();
+    let mut database = Database::new(database_path, video_paths).unwrap();
+    database.retrieve_images(&thumbnail_path).unwrap();
     let mut mostly_static = MostlyStatic::new(database);
 
     app.canvas.clear();
@@ -1594,5 +1598,5 @@ async fn main() {
     {
         return;
     }
-    mostly_static.animes.write("./anime-cache.db").unwrap();
+    mostly_static.animes.write(cfg.database_path()).unwrap();
 }
