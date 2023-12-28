@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 mod parser;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Config {
     thumbnail_path: PathBuf,
     database_path: PathBuf,

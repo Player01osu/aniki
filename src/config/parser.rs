@@ -41,8 +41,8 @@ pub enum Node {
     VideoPaths(Vec<PathBuf>),
 }
 
-fn expect_token(Token { kind }: Token, expected: TokenKind) -> Result<()> {
-    if kind != expected {
+fn expect_token(Token { kind }: &Token, expected: TokenKind) -> Result<()> {
+    if kind != &expected {
         return Err(anyhow::anyhow!(
             "Unexpected token: \"{kind:?}\" Expected: \"{expected:?}\""
         ));
@@ -89,19 +89,23 @@ fn next_path<'a>(lexer: &mut ConfigLexer<'a>) -> Result<PathBuf> {
 pub(super) fn next_node<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Option<Node>> {
     match lexer.next_token().kind {
         TokenKind::ThumbnailPath => {
-            expect_token(lexer.next_token(), TokenKind::Assignment)?;
+            expect_token(&lexer.next_token(), TokenKind::Assignment)?;
             let path = next_path(lexer)?;
-            expect_token(lexer.next_token(), TokenKind::Newline)?;
+
+            let next_token = lexer.next_token();
+            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::EOF))?;
             Ok(Some(Node::ThumbnailPath(path)))
         }
         TokenKind::DatabasePath => {
-            expect_token(lexer.next_token(), TokenKind::Assignment)?;
+            expect_token(&lexer.next_token(), TokenKind::Assignment)?;
             let path = next_path(lexer)?;
-            expect_token(lexer.next_token(), TokenKind::Newline)?;
+
+            let next_token = lexer.next_token();
+            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::EOF))?;
             Ok(Some(Node::DatabasePath(path)))
         }
         TokenKind::VideoPaths => {
-            expect_token(lexer.next_token(), TokenKind::Assignment)?;
+            expect_token(&lexer.next_token(), TokenKind::Assignment)?;
 
             let paths = match lexer.next_token().kind {
                 TokenKind::StringLiteral(s) => vec![cook_string(s)],
@@ -109,7 +113,8 @@ pub(super) fn next_node<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Option<Node>>
                 kind => return Err(anyhow::anyhow!("Unexpected token: {kind:?}")),
             };
 
-            expect_token(lexer.next_token(), TokenKind::Newline)?;
+            let next_token = lexer.next_token();
+            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::EOF))?;
             Ok(Some(Node::VideoPaths(paths)))
         }
         TokenKind::EOF => Ok(None),
@@ -120,12 +125,21 @@ pub(super) fn next_node<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Option<Node>>
 impl Config {
     pub fn parse(
         config_path: PathBuf,
+        thumbnail_path: PathBuf,
+        database_path: PathBuf,
+        video_paths: Vec<PathBuf>,
+    ) -> Self {
+        let src = std::fs::read_to_string(config_path).unwrap();
+        Self::parse_str(&src, thumbnail_path, database_path, video_paths)
+    }
+
+    pub fn parse_str(
+        src: &str,
         mut thumbnail_path: PathBuf,
         mut database_path: PathBuf,
         mut video_paths: Vec<PathBuf>,
     ) -> Self {
-        let src = std::fs::read_to_string(config_path).unwrap();
-        let mut lexer = ConfigLexer::new(&src);
+        let mut lexer = ConfigLexer::new(src);
         while let Some(node) = next_node(&mut lexer).unwrap() {
             match node {
                 Node::ThumbnailPath(path) => thumbnail_path = path,
@@ -239,4 +253,62 @@ impl<'a> ConfigLexer<'a> {
         };
         Token { kind }
     }
+}
+
+#[test]
+fn parser_test_0() {
+    let path = "/path";
+    let src = format!(r#"thumbnail_path = "{path}""#);
+    let base_dir_path = Path::new("/");
+    let cfg = {
+        let database_path = base_dir_path.join("aniki.db");
+        let thumbnail_path = base_dir_path.join("thumbnails");
+        let video_paths = vec![];
+        Config::parse_str(&src, thumbnail_path, database_path, video_paths)
+    };
+
+    let database_path = base_dir_path.join("aniki.db");
+    let _thumbnail_path = base_dir_path.join("thumbnails");
+    let video_paths = vec![];
+
+    assert_eq!(cfg, Config { thumbnail_path: PathBuf::from(path), database_path, video_paths });
+}
+
+#[test]
+fn parser_test_1() {
+    let path = "/path";
+    let src = format!(r#"database_path = '{path}'"#);
+    let base_dir_path = Path::new("/");
+    let cfg = {
+        let database_path = base_dir_path.join("aniki.db");
+        let thumbnail_path = base_dir_path.join("thumbnails");
+        let video_paths = vec![];
+        Config::parse_str(&src, thumbnail_path, database_path, video_paths)
+    };
+
+    let _database_path = base_dir_path.join("aniki.db");
+    let thumbnail_path = base_dir_path.join("thumbnails");
+    let video_paths = vec![];
+
+    assert_eq!(cfg, Config { thumbnail_path, database_path: PathBuf::from(path), video_paths });
+}
+
+#[test]
+fn parser_test_2() {
+    let path = "/path";
+    let path_1 = "/path-1";
+    let src = format!(r#"video_paths = ["{path}", "{path_1}"]"#);
+    let base_dir_path = Path::new("/");
+    let cfg = {
+        let database_path = base_dir_path.join("aniki.db");
+        let thumbnail_path = base_dir_path.join("thumbnails");
+        let video_paths = vec![];
+        Config::parse_str(&src, thumbnail_path, database_path, video_paths)
+    };
+
+    let database_path = base_dir_path.join("aniki.db");
+    let thumbnail_path = base_dir_path.join("thumbnails");
+    let video_paths = vec![PathBuf::from(path), PathBuf::from(path_1)];
+
+    assert_eq!(cfg, Config { thumbnail_path, database_path, video_paths });
 }
