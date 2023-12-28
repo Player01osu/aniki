@@ -19,7 +19,6 @@ use sdl2::{
     surface::Surface,
     url::open_url,
 };
-use std::cell::RefCell;
 use std::collections::{btree_map::Entry, BTreeMap};
 use std::rc::Rc;
 use std::time::Duration;
@@ -411,7 +410,7 @@ impl<'a> TextureManager<'a> {
 #[derive(Clone, Debug)]
 pub enum Screen {
     Main,
-    SelectEpisode(Rc<RefCell<database::Anime>>),
+    SelectEpisode(Rc<str>),
 }
 
 impl Layout {
@@ -850,9 +849,9 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         }
 
         if !button_pressed && app.mouse_clicked_left {
-            let anime = anime.clone();
+            let anime = anime.filename().into();
             app.episode_scroll = 0;
-            app.set_screen(Screen::SelectEpisode(Rc::new(RefCell::new(anime))));
+            app.set_screen(Screen::SelectEpisode(anime));
         }
     } else if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
         app.main_extra_menu_id;
@@ -999,7 +998,7 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         }
     } else if app.keydown(Keycode::Return) {
         if let Some(idx) = app.main_selected {
-            let anime = Rc::new(RefCell::new(animes.animes()[idx].clone()));
+            let anime = animes.animes()[idx].filename().into();
             app.set_screen(Screen::SelectEpisode(anime));
         }
     }
@@ -1126,18 +1125,17 @@ fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
 
 fn draw_top_panel_with_metadata(
     app: &mut App,
-    anime: Rc<RefCell<database::Anime>>,
+    anime: &database::Anime,
     layout: Layout,
     metadata: &AnimeDatabaseData,
 ) {
     let (_, font_height) = app.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
-    let description_layout = match anime.borrow().thumbnail() {
+    let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
-            let path = thumbnail.clone().into_boxed_str();
-            if let Ok((image_width, image_height)) = app.image_manager.query_size(&path) {
+            if let Ok((image_width, image_height)) = app.image_manager.query_size(&thumbnail) {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height / image_height, layout.width);
-                let _ = draw_image_float(app, path, image_layout, None);
+                let _ = draw_image_float(app, thumbnail, image_layout, None);
                 description_layout.pad_outer(10, 10)
             } else {
                 layout
@@ -1185,7 +1183,7 @@ fn draw_top_panel_with_metadata(
     draw_text_centered(
         app,
         DIRECTORY_NAME_FONT_INFO,
-        anime.borrow().filename(),
+        anime.filename(),
         color_hex(DIRECTORY_NAME_FONT_COLOR),
         directory_name_layout.x + directory_name_layout.width as i32 / 2,
         directory_name_layout.y + directory_name_layout.height as i32 / 2,
@@ -1195,17 +1193,21 @@ fn draw_top_panel_with_metadata(
     app.canvas.set_clip_rect(None);
 }
 
-fn draw_top_panel_anime_expand(app: &mut App, anime: Rc<RefCell<database::Anime>>, layout: Layout) {
-    match anime.borrow().metadata() {
-        Some(m) => draw_top_panel_with_metadata(app, Rc::clone(&anime), layout, m),
+fn draw_top_panel_anime_expand(
+    app: &mut App,
+    anime: &database::Anime,
+    layout: Layout,
+) {
+    match anime.metadata() {
+        Some(m) => draw_top_panel_with_metadata(app, anime, layout, m),
         None => {}
     }
 }
 
 fn draw_episode(
     app: &mut App,
-    //mostly_static: &mut MostlyStatic,
-    anime: Rc<RefCell<database::Anime>>,
+    mostly_static: &mut MostlyStatic,
+    anime: &database::Anime,
     text: &str,
     episode: Episode,
     layout: Layout,
@@ -1226,11 +1228,8 @@ fn draw_episode(
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout.to_rect()).unwrap();
         if app.mouse_clicked_left {
-            {
-                let mut mutable_anime = anime.borrow_mut();
-                mutable_anime.update_watched(episode.to_owned()).unwrap();
-            }
-            let anime = anime.borrow();
+            let anime = mostly_static.animes.get_anime(anime.filename()).unwrap();
+            anime.update_watched(episode.to_owned()).unwrap();
             let paths = anime.find_episode_path(&episode);
             app.episode_scroll = 0;
             open_url(&paths[0]).unwrap();
@@ -1259,12 +1258,12 @@ fn dbg_layout(app: &mut App, layout: Layout) {
 fn draw_episode_list(
     app: &mut App,
     mostly_static: &mut MostlyStatic,
-    anime: Rc<RefCell<database::Anime>>,
+    anime: &database::Anime,
     layout: Layout,
 ) {
     app.canvas.set_clip_rect(layout.to_rect());
     let episode_height = 70;
-    let episode_count = anime.borrow().len() + 1 + anime.borrow().has_next_episode() as usize;
+    let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
     let (layout, scrollbar_layout) = layout.split_vert(796, 800);
     let layouts = layout
         .scroll_y(app.episode_scroll)
@@ -1287,21 +1286,22 @@ fn draw_episode_list(
     }
 
     let mut layout_iter = layouts.iter();
-    let current_ep = anime.borrow().current_episode();
+    let current_ep = anime.current_episode();
     draw_episode(
         app,
-        Rc::clone(&anime),
+        mostly_static,
+        anime,
         &format!("Current: {current_ep}"),
         current_ep.clone(),
         *layout_iter.next().unwrap(),
         layout.to_rect(),
     );
 
-    let next_ep = anime.borrow().next_episode();
+    let next_ep = anime.next_episode();
     if let Some(next_ep) = next_ep {
-        let anime = Rc::clone(&anime);
         draw_episode(
             app,
+            mostly_static,
             anime,
             &format!("Next: {next_ep}"),
             next_ep,
@@ -1310,17 +1310,12 @@ fn draw_episode_list(
         );
     }
 
-    // Should be safe, as `draw_episode` only calls to `update_watched`,
-    // which _should not_ mutate `episode_map`.
-    let episode_map = unsafe {
-        let anime_borrow = anime.borrow();
-        let episodes = anime_borrow.episodes();
-        std::slice::from_raw_parts(episodes.as_ptr(), episodes.len())
-    };
+    let episode_map = anime.episodes();
     for (episode_layout, (episode, _)) in layout_iter.zip(episode_map) {
         draw_episode(
             app,
-            Rc::clone(&anime),
+            mostly_static,
+            anime,
             &format!("{episode}"),
             episode.to_owned(),
             *episode_layout,
@@ -1347,8 +1342,16 @@ fn draw_episode_list(
     }
 }
 
-fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, anime: Rc<RefCell<database::Anime>>) {
+fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, filename: Rc<str>) {
+    // Anime reference will never get changed while drawing frame
+    let anime: &database::Anime = unsafe {
+        let ptr = mostly_static.animes.get_anime(filename).unwrap() as *const database::Anime;
+        std::mem::transmute(ptr)
+    };
     let (window_width, window_height) = app.canvas.window().size();
+
+    // TODO: Think about abstracting scrolling type windows out
+    // into a function or data structure
     let layout = Layout::new(
         DESCRIPTION_X_PAD_OUTER,
         DESCRIPTION_Y_PAD_OUTER,
@@ -1357,23 +1360,21 @@ fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, anime: Rc<
     );
     let (left_layout, right_layout) = layout.split_vert(1, 10);
     let (top_left_layout, _bottom_left_layout) = left_layout.split_hori(1, 11);
-
     let (top_description_layout, bottom_description_layout) = right_layout.split_hori(3, 7);
-    // TODO: Think about abstracting scrolling type windows out
-    // into a function or data structure
     let top_description_layout = top_description_layout.pad_bottom(10);
-    draw_top_panel_anime_expand(app, Rc::clone(&anime), top_description_layout);
-
     let (back_button_layout, _) = top_left_layout.split_hori(10, 11);
-    draw_back_button(app, Screen::Main, back_button_layout.pad_right(10));
 
-    draw_episode_list(app, mostly_static, Rc::clone(&anime), bottom_description_layout);
+    draw_top_panel_anime_expand(app, &anime, top_description_layout);
+    draw_back_button(app, Screen::Main, back_button_layout.pad_right(10));
+    draw_episode_list(app, mostly_static, anime, bottom_description_layout);
 }
 
 fn draw(app: &mut App, mostly_static: &mut MostlyStatic) {
     match app.screen {
         Screen::Main => draw_main(app, mostly_static),
-        Screen::SelectEpisode(ref anime) => draw_anime_expand(app, mostly_static, Rc::clone(anime)),
+        Screen::SelectEpisode(ref anime) => {
+            draw_anime_expand(app, mostly_static, Rc::clone(anime))
+        }
     }
 }
 
