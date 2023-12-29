@@ -301,16 +301,21 @@ fn dir_modified_time(path: impl AsRef<Path>) -> u64 {
         .as_secs()
 }
 
-async fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
+fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
     eprintln!("Retrieving images...");
-    let data = reqwest::get(url)
-        .await
-        .with_context(|| "Failed to connect to url")?
-        .bytes()
+    let url = url.to_owned();
+    let path = path.to_owned();
+    tokio::task::spawn(async {
+        let data = reqwest::get(url)
+            .await
+            .with_context(|| "Failed to connect to url")?
+            .bytes()
         .await?;
-    tokio::fs::write(path, data)
-        .await
-        .with_context(|| "Failed to write to file")?;
+        tokio::fs::write(path, data)
+            .await
+            .with_context(|| "Failed to write to file")?;
+        Ok::<(), anyhow::Error>(())
+    });
     Ok(())
 }
 
@@ -341,7 +346,7 @@ impl Database {
         self.anime_map.len()
     }
 
-    pub async fn retrieve_images(&mut self, image_directory: &str) -> anyhow::Result<()> {
+    pub fn retrieve_images(&mut self, image_directory: &str) -> anyhow::Result<()> {
         if !Path::new(image_directory).exists() {
             std::fs::create_dir(image_directory)?;
         }
@@ -349,7 +354,7 @@ impl Database {
             if let Some(metadata) = &anime.metadata {
                 let thumbnail_path = format!("{image_directory}/{}.jpg", metadata.title());
                 if !std::path::Path::new(&thumbnail_path).exists() {
-                    download_image(metadata.thumbnail(), &thumbnail_path).await?;
+                    download_image(metadata.thumbnail(), &thumbnail_path)?;
                 }
                 anime.thumbnail = Some(thumbnail_path);
             }
