@@ -1,7 +1,7 @@
 use std::env;
 
-const JSON_DATABASE_UPSTREAM: &'static str = "https://github.com/manami-project/anime-offline-database/raw/master/anime-offline-database-minified.json";
-const JSON_DATABASE_PATH: &'static str = "./anime-offline-database.json";
+const JSON_DATABASE_UPSTREAM: &str = "https://github.com/manami-project/anime-offline-database/raw/master/anime-offline-database-minified.json";
+const JSON_DATABASE_PATH: &str = "./anime-offline-database.json";
 
 fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();

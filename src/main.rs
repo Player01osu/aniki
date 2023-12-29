@@ -25,8 +25,8 @@ use std::collections::{btree_map::Entry, BTreeMap};
 use std::rc::Rc;
 use std::time::Duration;
 
-mod database;
 mod config;
+mod database;
 
 const DEBUG_COLOR: u32 = 0xFF0000;
 
@@ -156,9 +156,11 @@ pub struct Layout {
     height: u32,
 }
 
+type ImageData = (String, Option<(WidthRatio, HeightRatio)>);
+
 pub struct TextureManager<'a> {
     texture_creator: &'a TextureCreator<WindowContext>,
-    cache: BTreeMap<(String, Option<(WidthRatio, HeightRatio)>), Rc<Texture<'a>>>,
+    cache: BTreeMap<ImageData, Rc<Texture<'a>>>,
 }
 
 pub struct FontManager<'a, 'b> {
@@ -246,7 +248,7 @@ fn hex_color_test_1() {
 }
 
 pub fn hex_color(color: Color) -> u32 {
-    ((color.r as u32) << 0x10) | ((color.g as u32) << 0x8) | ((color.b as u32) << 0x00)
+    ((color.r as u32) << 0x10) | ((color.g as u32) << 0x8) | (color.b as u32)
 }
 
 impl<'a, 'b> TextManager<'a, 'b> {
@@ -591,7 +593,7 @@ impl Layout {
 fn rgb_hex(hex: u32) -> (u8, u8, u8) {
     let r = ((hex & 0xFF0000) >> 0x10) as u8;
     let g = ((hex & 0x00FF00) >> 0x08) as u8;
-    let b = ((hex & 0x0000FF) >> 0x00) as u8;
+    let b = (hex & 0x0000FF) as u8;
     (r, g, b)
 }
 
@@ -604,7 +606,7 @@ fn color_hex_a(hex: u32) -> Color {
     let r = ((hex & 0xFF000000) >> 0x18) as u8;
     let g = ((hex & 0x00FF0000) >> 0x10) as u8;
     let b = ((hex & 0x0000FF00) >> 0x08) as u8;
-    let a = ((hex & 0x000000FF) >> 0x00) as u8;
+    let a = (hex & 0x000000FF) as u8;
     Color::RGBA(r, g, b, a)
 }
 
@@ -854,7 +856,6 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
             app.set_screen(Screen::SelectEpisode(anime));
         }
     } else if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
-        app.main_extra_menu_id;
         app.main_extra_menu_id = None;
     }
 
@@ -972,7 +973,7 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         }
     } else if app.keydown(Keycode::K) {
         if let Some(first) = card_layouts.first() {
-            if first.y < CARD_Y_PAD_OUTER as i32 {
+            if first.y < CARD_Y_PAD_OUTER {
                 app.main_scroll += 40;
             }
         }
@@ -1014,8 +1015,7 @@ fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
     if app.resized() {
         if let Some(last) = card_layouts.last() {
             if (last.y + last.height as i32) < window_height as i32 {
-                app.main_scroll =
-                    app.main_scroll - (last.y + last.height as i32 - window_height as i32);
+                app.main_scroll -= last.y + last.height as i32 - window_height as i32;
             }
         }
     }
@@ -1092,7 +1092,7 @@ impl Style {
 /// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
     let button_rect = layout.to_rect();
-    let (text_width, _text_height) = text_size(app, TITLE_FONT_INFO, &text);
+    let (text_width, _text_height) = text_size(app, TITLE_FONT_INFO, text);
     let text = if text_width > layout.width {
         format!("{}...", text.split_at(15).0)
     } else {
@@ -1140,7 +1140,7 @@ fn draw_top_panel_with_metadata(
     let (_, font_height) = app.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
-            if let Ok((image_width, image_height)) = app.image_manager.query_size(&thumbnail) {
+            if let Ok((image_width, image_height)) = app.image_manager.query_size(thumbnail) {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height / image_height, layout.width);
                 let _ = draw_image_float(app, thumbnail, image_layout, None);
@@ -1201,11 +1201,7 @@ fn draw_top_panel_with_metadata(
     app.canvas.set_clip_rect(None);
 }
 
-fn draw_top_panel_anime_expand(
-    app: &mut App,
-    anime: &database::Anime,
-    layout: Layout,
-) {
+fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Layout) {
     match anime.metadata() {
         Some(m) => draw_top_panel_with_metadata(app, anime, layout, m),
         None => {}
@@ -1400,8 +1396,8 @@ impl<'a, 'b> App<'a, 'b> {
         Self {
             canvas,
             screen: Screen::Main,
-            text_manager: TextManager::new(&texture_creator, FontManager::new(ttf_ctx)),
-            image_manager: TextureManager::new(&texture_creator),
+            text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
+            image_manager: TextureManager::new(texture_creator),
             running: true,
 
             id: 0,
@@ -1442,7 +1438,7 @@ impl<'a, 'b> App<'a, 'b> {
     pub fn keydown(&self, keycode: Keycode) -> bool {
         self.keycode_map
             .get(&(keycode as u32))
-            .map(|v| *v)
+            .copied()
             .unwrap_or(false)
     }
 
@@ -1494,7 +1490,11 @@ async fn main() {
     let cfg = Config::parse_cfg();
     let database_path = cfg.database_path().to_string_lossy();
     let thumbnail_path = cfg.thumbnail_path().to_string_lossy();
-    let video_paths = cfg.video_paths().into_iter().map(|v| v.to_string_lossy().to_string()).collect();
+    let video_paths = cfg
+        .video_paths()
+        .iter()
+        .map(|v| v.to_string_lossy().to_string())
+        .collect();
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();

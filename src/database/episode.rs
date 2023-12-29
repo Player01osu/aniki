@@ -95,10 +95,10 @@ impl FromStr for Episode {
                     .name("e")
                     .map(|a| a.as_str().parse().expect("Capture is integer"))
                     .ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
-                return Ok(Self::Numbered { season, episode });
+                Ok(Self::Numbered { season, episode })
             }
             None => {
-                return Ok(Self::Special {
+                Ok(Self::Special {
                     filename: s.to_string(),
                 })
             }
@@ -116,7 +116,7 @@ impl TryFrom<&Path> for Episode {
                 .to_str()
                 .unwrap()
                 .to_string();
-        Ok(filename.parse()?)
+        filename.parse()
     }
 }
 

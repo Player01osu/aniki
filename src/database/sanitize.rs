@@ -1,7 +1,7 @@
 use std::str::Chars;
 
 fn matches_string(cursor: Chars, matches: &str) -> bool {
-    if cursor.as_str().len() == 0 {
+    if cursor.as_str().is_empty() {
         return false;
     }
     for (src, other) in cursor.zip(matches.chars()) {
@@ -9,11 +9,11 @@ fn matches_string(cursor: Chars, matches: &str) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn consume_bracket(s: &mut Chars, buf: &mut String, terminating_bracket: char) {
-    while let Some(c) = s.next() {
+    for c in s.by_ref() {
         if c == terminating_bracket {
             break;
         }
@@ -104,7 +104,7 @@ fn consume_space(s: &mut Chars, buf: &mut String) {
 pub fn sanitize_name(s: &mut Chars, buf: &mut String) {
     let c = match s.next() {
         Some(c) => c,
-        None => return (),
+        None => return ,
     };
 
     match c {

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::path::Path;
 
-const JSON_RAW: &'static [u8] =
+const JSON_RAW: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/anime-offline-database.json"));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,7 +83,7 @@ impl std::fmt::Debug for AnimeDatabaseData {
 }
 
 fn format_vec_string(
-    vec: &Vec<String>,
+    vec: &[String],
     f: &mut std::fmt::Formatter<'_>) {
     write!(f, "vec![").ok();
     for (i, a) in vec.iter().enumerate() {
@@ -96,7 +96,7 @@ fn format_vec_string(
 }
 
 fn format_vec(
-    vec: &Vec<impl std::fmt::Debug>,
+    vec: &[impl std::fmt::Debug],
     f: &mut std::fmt::Formatter<'_>) {
     write!(f, "vec![").ok();
     for (i, a) in vec.iter().enumerate() {
@@ -236,14 +236,14 @@ pub fn match_names(
     let mut name_matches = Vec::with_capacity(sanitized_names.len());
     let mut name_heap = BinaryHeap::new();
     for name in sanitized_names {
-        let (i, j, k) = str_idx(&name);
+        let (i, j, k) = str_idx(name);
         let map = match optimized.map.get(&(i, j, k)) {
             Some(m) => m,
             None => continue,
         };
         'map: for anime in map.iter() {
             let title = &anime.title;
-            if let Some(weight) = matcher.fuzzy_match(&name, title) {
+            if let Some(weight) = matcher.fuzzy_match(name, title) {
                 if weight < 150 {
                     continue 'map;
                 }
@@ -251,7 +251,7 @@ pub fn match_names(
             }
 
             for synonym in anime.synonyms.iter() {
-                if let Some(weight) = matcher.fuzzy_match(&name, &synonym) {
+                if let Some(weight) = matcher.fuzzy_match(name, synonym) {
                     name_heap.push((weight, synonym));
                 }
             }
@@ -271,14 +271,14 @@ pub fn match_name(
 ) -> Option<AnimeDatabaseData> {
     let matcher = SkimMatcherV2::default().ignore_case();
     let mut name_heap = BinaryHeap::new();
-    let (i, j, k) = str_idx(&sanitized_name);
+    let (i, j, k) = str_idx(sanitized_name);
     let map = match optimized.map.get(&(i, j, k)) {
         Some(m) => m,
         None => return None,
     };
     'map: for anime in map.iter() {
         let title = &anime.title;
-        if let Some(weight) = matcher.fuzzy_match(&sanitized_name, title) {
+        if let Some(weight) = matcher.fuzzy_match(sanitized_name, title) {
             if weight < 150 {
                 continue 'map;
             }
@@ -286,13 +286,10 @@ pub fn match_name(
         }
 
         for synonym in anime.synonyms.iter() {
-            if let Some(weight) = matcher.fuzzy_match(&sanitized_name, &synonym) {
+            if let Some(weight) = matcher.fuzzy_match(sanitized_name, synonym) {
                 name_heap.push((weight, synonym));
             }
         }
     }
-    match name_heap.pop() {
-        Some((_, k)) => Some(optimized.find(k)),
-        None => None,
-    }
+    name_heap.pop().map(|(_, k)| optimized.find(k))
 }

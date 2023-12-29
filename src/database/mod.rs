@@ -148,7 +148,7 @@ impl Anime {
             .max_depth(5)
             .min_depth(1)
             .into_iter()
-            .filter_map(|d| Some(d.ok()?)) // Report directory not found
+            .filter_map(|d| d.ok()) // Report directory not found
             .filter(|d| {
                 d.file_type().is_file()
                     && d.path()
@@ -175,7 +175,7 @@ impl Anime {
     }
 
     pub fn has_episode(&self, episode: &Episode) -> bool {
-        self.episodes.iter().find(|(v, _)| episode.eq(v)).is_some()
+        self.episodes.iter().any(|(v, _)| episode.eq(v))
     }
 
     pub fn find_episode_path(&self, episode: &Episode) -> &[String] {
@@ -216,11 +216,7 @@ impl Anime {
             Some(episode)
         } else if let Some(episode) = get_episode(season + 1, 0) {
             Some(episode)
-        } else if let Some(episode) = get_episode(season + 1, 1) {
-            Some(episode)
-        } else {
-            None
-        }
+        } else { get_episode(season + 1, 1) }
     }
 
     pub fn filename(&self) -> &str {
@@ -235,7 +231,7 @@ impl Anime {
         )
     }
 
-    pub fn next_episode_path<'a>(&self) -> Result<Option<(Episode, &[String])>> {
+    pub fn next_episode_path(&self) -> Result<Option<(Episode, &[String])>> {
         match self.current_episode {
             Episode::Numbered { season, episode } => {
                 Ok(self.next_episode_path_raw((season, episode)))
@@ -244,7 +240,7 @@ impl Anime {
         }
     }
 
-    pub fn next_episode_path_raw<'a>(
+    pub fn next_episode_path_raw(
         &self,
         _current_episode @ (season, episode): (u32, u32),
     ) -> Option<(Episode, &[String])> {
@@ -282,7 +278,10 @@ impl Anime {
 
     pub fn update_watched(&mut self, watched: Episode) -> Result<()> {
         match self.episodes.iter().find(|(ep, _)| watched.eq(ep)) {
-            Some(_) => Ok(unsafe { self.update_watched_unchecked(watched) }),
+            Some(_) => {
+                unsafe { self.update_watched_unchecked(watched) };
+                Ok(())
+            },
             None => Err(Err::InvalidEpisode(InvalidEpisodeError::NotExist {
                 anime: self.path.to_string(),
                 episode: watched,
@@ -364,7 +363,7 @@ impl Database {
 
     pub fn update(&mut self, anime_directories: Vec<impl AsRef<str>>) {
         let time = get_time();
-        let mut optimized = self.optimized_db.get_or_insert_with(|| {
+        let optimized = self.optimized_db.get_or_insert_with(|| {
             let json_db = open_json_db("");
             optimize_json_db(json_db)
         });
@@ -384,7 +383,7 @@ impl Database {
                     Entry::Vacant(v) => {
                         sanitize::sanitize_name(&mut chars, &mut sanitized_name);
                         let metadata =
-                            match_name(&sanitized_name.trim().to_owned(), &mut optimized);
+                            match_name(sanitized_name.trim(), optimized);
                         v.insert(Anime::from_path(path, name, metadata, time));
                         sanitized_name.clear();
                     }
@@ -412,7 +411,7 @@ impl Database {
         anime_list
     }
 
-    pub fn get_anime<'b>(&'b mut self, anime: impl AsRef<str>) -> Option<&'b mut Anime> {
+    pub fn get_anime(&mut self, anime: impl AsRef<str>) -> Option<&mut Anime> {
         self.anime_map.get_mut(anime.as_ref())
     }
 }

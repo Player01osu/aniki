@@ -19,7 +19,7 @@ enum TokenKind {
     Comma,
     Assignment,
 
-    EOF,
+    Eof,
     Illegal,
 }
 
@@ -50,7 +50,7 @@ fn expect_token(Token { kind }: &Token, expected: TokenKind) -> Result<()> {
     Ok(())
 }
 
-fn parse_path_array<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Vec<PathBuf>> {
+fn parse_path_array(lexer: &mut ConfigLexer<'_>) -> Result<Vec<PathBuf>> {
     let mut vec = match lexer.next_token().kind {
         TokenKind::StringLiteral(s) => vec![s.into()],
         kind => return Err(anyhow::anyhow!("Unexpected token: {kind:?}")),
@@ -79,21 +79,21 @@ fn cook_string(s: String) -> PathBuf {
     }
 }
 
-fn next_path<'a>(lexer: &mut ConfigLexer<'a>) -> Result<PathBuf> {
+fn next_path(lexer: &mut ConfigLexer<'_>) -> Result<PathBuf> {
     match lexer.next_token().kind {
         TokenKind::StringLiteral(s) => Ok(cook_string(s)),
         kind => Err(anyhow::anyhow!("Unexpected token: {kind:?}")),
     }
 }
 
-pub(super) fn next_node<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Option<Node>> {
+pub(super) fn next_node(lexer: &mut ConfigLexer<'_>) -> Result<Option<Node>> {
     match lexer.next_token().kind {
         TokenKind::ThumbnailPath => {
             expect_token(&lexer.next_token(), TokenKind::Assignment)?;
             let path = next_path(lexer)?;
 
             let next_token = lexer.next_token();
-            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::EOF))?;
+            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::ThumbnailPath(path)))
         }
         TokenKind::DatabasePath => {
@@ -101,7 +101,7 @@ pub(super) fn next_node<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Option<Node>>
             let path = next_path(lexer)?;
 
             let next_token = lexer.next_token();
-            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::EOF))?;
+            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::DatabasePath(path)))
         }
         TokenKind::VideoPaths => {
@@ -114,10 +114,10 @@ pub(super) fn next_node<'a>(lexer: &mut ConfigLexer<'a>) -> Result<Option<Node>>
             };
 
             let next_token = lexer.next_token();
-            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::EOF))?;
+            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::VideoPaths(paths)))
         }
-        TokenKind::EOF => Ok(None),
+        TokenKind::Eof => Ok(None),
         kind => Err(anyhow::anyhow!("Unexpected token: {kind:?}")),
     }
 }
@@ -225,7 +225,7 @@ impl<'a> ConfigLexer<'a> {
             Some(c) => c,
             None => {
                 return Token {
-                    kind: TokenKind::EOF,
+                    kind: TokenKind::Eof,
                 };
             }
         };
