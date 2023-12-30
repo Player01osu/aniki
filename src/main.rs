@@ -1501,7 +1501,7 @@ async fn main() {
     video_subsystem.enable_screen_saver();
 
     let window = video_subsystem
-        .window("TEST", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .window("Aniki", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .resizable()
         .build()
