@@ -5,6 +5,7 @@ use fuzzy_matcher::FuzzyMatcher;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::path::Path;
+use std::str::Chars;
 
 const JSON_RAW: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/anime-offline-database.json"));
 
@@ -14,15 +15,15 @@ pub struct AnimeSeason {
     year: Option<u32>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnimeDatabaseData {
-    pub sources: Vec<String>,
+    pub sources: Box<[String]>,
     pub title: String,
-    pub synonyms: Vec<String>,
+    pub synonyms: Box<[String]>,
     #[serde(rename = "picture")]
     pub thumbnail: String,
-    pub tags: Vec<String>,
+    pub tags: Box<[String]>,
 }
 
 impl AnimeDatabaseData {
@@ -47,87 +48,122 @@ impl AnimeDatabaseData {
 #[serde(rename_all = "camelCase")]
 pub struct AnimeDatabaseJson {
     last_update: String,
-    data: Vec<AnimeDatabaseData>,
+    data: Box<[AnimeDatabaseData]>,
 }
 
-//#[derive(Debug)]
-pub struct OptimizedDatabase {
-    pub map: BTreeMap<(char, char, char), Vec<AnimeDatabaseData>>,
-    pub search_map: Option<BTreeMap<(char, char, char), BTreeSet<String>>>,
+pub type OptimizedMap<'a> = BTreeMap<OptimizedKey, OptimizedValue<'a>>;
+type OptimizedKey = (char, char, char);
+type OptimizedValue<'a> = BTreeSet<&'a AnimeDatabaseData>;
+
+#[derive(Debug)]
+struct OptimizedDatabase<'a> {
+    map: Option<BTreeMap<OptimizedKey, OptimizedValue<'a>>>,
+    search_map: Option<BTreeMap<OptimizedKey, OptimizedValue<'a>>>,
 }
 
-fn format_string(s: &str, f: &mut std::fmt::Formatter<'_>) {
-    write!(f, r####"String::from(r###"{s}"###)"####).ok();
+#[derive(Debug)]
+pub struct JsonIndexed<'a> {
+    optimized: OptimizedDatabase<'a>,
+    json_database: AnimeDatabaseJson,
 }
 
-impl std::fmt::Debug for AnimeDatabaseData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, r#"AnimeDatabaseData{{"#).ok();
-
-        write!(f, r#"title:"#).ok();
-        format_string(&self.title, f);
-        write!(f, r#",thumbnail:"#).ok();
-        format_string(&self.thumbnail, f);
-        write!(f, r#",sources:"#).ok();
-        format_vec_string(&self.sources, f);
-        write!(f, r#",synonyms:"#).ok();
-        format_vec_string(&self.synonyms, f);
-        write!(f, r#",tags:"#).ok();
-        format_vec_string(&self.tags, f);
-        write!(f, r#"}}"#).ok();
-
-        Ok(())
+impl Default for JsonIndexed<'_> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-fn format_vec_string(vec: &[String], f: &mut std::fmt::Formatter<'_>) {
-    write!(f, "vec![").ok();
-    for (i, a) in vec.iter().enumerate() {
-        if i != 0 {
-            write!(f, ",").ok();
+impl<'b> JsonIndexed<'b> {
+    pub fn new() -> Self {
+        let json_database = open_json_db("");
+        let optimized = OptimizedDatabase::new();
+        Self {
+            optimized,
+            json_database,
         }
-        format_string(a, f);
     }
-    write!(f, "]").ok();
-}
 
-fn format_vec(vec: &[impl std::fmt::Debug], f: &mut std::fmt::Formatter<'_>) {
-    write!(f, "vec![").ok();
-    for (i, a) in vec.iter().enumerate() {
-        if i != 0 {
-            write!(f, ",").ok();
+    pub fn find<'a>(&self, map: &'a OptimizedMap, key: &str) -> &'a AnimeDatabaseData {
+        let (i, j, k) = str_idx(key);
+        map.get(&(i, j, k))
+            .unwrap()
+            .iter()
+            .find(|v| v.title == key || v.synonyms.iter().any(|title| title == key))
+            .unwrap()
+    }
+
+    pub fn match_names<'a>(
+        &self,
+        map: &'a OptimizedMap,
+        sanitized_names: &[String],
+    ) -> Box<[Option<&'a AnimeDatabaseData>]> {
+        let matcher = skim_matcher();
+        let mut name_matches = Vec::with_capacity(sanitized_names.len());
+        let mut name_heap = BinaryHeap::new();
+        for name in sanitized_names {
+            let (i, j, k) = str_idx(name);
+            let set = match map.get(&(i, j, k)) {
+                Some(m) => m,
+                None => continue,
+            };
+            for anime in set.iter() {
+                let title = &anime.title;
+                if let Some(weight) = matcher.fuzzy_match(name, title) {
+                    name_heap.push((weight, title));
+                }
+
+                for synonym in anime.synonyms.iter() {
+                    if let Some(weight) = matcher.fuzzy_match(name, synonym) {
+                        name_heap.push((weight, synonym));
+                    }
+                }
+            }
+            match name_heap.pop() {
+                Some((_, k)) => name_matches.push(Some(self.find(map, k))),
+                None => name_matches.push(None),
+            }
+            name_heap.clear();
         }
-        write!(f, "{a:?}").ok();
+        name_matches.into()
     }
-    write!(f, "]").ok();
+
+    pub fn match_name<'a>(
+        &self,
+        map: &'a OptimizedMap,
+        sanitized_name: &str,
+    ) -> Option<&'a AnimeDatabaseData> {
+        let matcher = skim_matcher();
+        let mut name_heap = BinaryHeap::new();
+        let (i, j, k) = str_idx(sanitized_name);
+        let set = match map.get(&(i, j, k)) {
+            Some(m) => m,
+            None => return None,
+        };
+        for anime in set.iter() {
+            let title = &anime.title;
+            if let Some(weight) = matcher.fuzzy_match(sanitized_name, title) {
+                name_heap.push((weight, title));
+            }
+
+            for synonym in anime.synonyms.iter() {
+                if let Some(weight) = matcher.fuzzy_match(sanitized_name, synonym) {
+                    name_heap.push((weight, synonym));
+                }
+            }
+        }
+        name_heap.pop().map(|(_, k)| self.find(map, k))
+    }
+
+    pub fn map(&mut self) -> &'b OptimizedMap {
+        self.optimized.optimize_json_db(&self.json_database)
+    }
+
+    pub fn search_map(&mut self) -> &'b OptimizedMap {
+        self.optimized.optimize_json_db_search(&self.json_database)
+    }
 }
 
-fn format_kv(
-    map: &BTreeMap<(char, char, char), Vec<AnimeDatabaseData>>,
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    for ((c1, c2, c3), v) in map.iter() {
-        write!(f, r"(({c1:?},{c2:?},{c3:?}),").ok();
-        format_vec(v, f);
-        write!(f, r")").ok();
-    }
-    Ok(())
-}
-
-impl std::fmt::Debug for OptimizedDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, r#"OptimizedDatabase{{map:BTreeMap::from(["#).ok();
-        format_kv(&self.map, f).ok();
-        write!(f, r#"])}}"#)
-        //write!(
-        //    f,
-        //    r#"OptimizedDatabase{{map:BTreeMap::from([{}])}}"#,
-        //    format_kv(&self.map, f)
-        //)
-    }
-}
-
-pub fn open_json_db(_path: impl AsRef<Path>) -> AnimeDatabaseJson {
+fn open_json_db(_path: impl AsRef<Path>) -> AnimeDatabaseJson {
     serde_json::from_slice(JSON_RAW).unwrap()
 }
 
@@ -143,7 +179,7 @@ fn c_filter(c: char) -> bool {
 }
 
 #[inline]
-fn skim_matcher() -> SkimMatcherV2 {
+pub fn skim_matcher() -> SkimMatcherV2 {
     let score_match = 16;
     let gap_start = -3;
     let gap_extension = -1;
@@ -169,7 +205,7 @@ fn skim_matcher() -> SkimMatcherV2 {
 fn tokenize(s: &str) -> Box<[&str]> {
     s.split_whitespace().collect()
 }
-pub fn sanitize_cache_name() -> Vec<String> {
+pub fn sanitize_cache_name() -> Box<[String]> {
     let mut database =
         Database::new("./anime-cache.db", vec!["/home/bruh/Videos/not-anime"]).unwrap();
     let animes = database.animes();
@@ -180,7 +216,7 @@ pub fn sanitize_cache_name() -> Vec<String> {
         sanitize_name(&mut chars, &mut buf);
         sanitized_names.push(buf.trim().to_string());
     }
-    sanitized_names
+    sanitized_names.into()
 }
 
 fn str_idx(s: &str) -> (char, char, char) {
@@ -192,167 +228,71 @@ fn str_idx(s: &str) -> (char, char, char) {
     )
 }
 
-impl OptimizedDatabase {
-    pub fn find(&self, key: &str) -> AnimeDatabaseData {
-        let (i, j, k) = str_idx(key);
-        self.map
-            .get(&(i, j, k))
-            .unwrap()
-            .iter()
-            .find(|v| v.title == key || v.synonyms.iter().any(|title| title == key))
-            .unwrap()
-            .clone()
+fn insert_index_map<'a>(
+    map: &mut OptimizedMap<'a>,
+    mut chars: Chars,
+    anime: &'a AnimeDatabaseData,
+) {
+    let c = chars.next().unwrap();
+    let c2 = chars.next().unwrap_or('\0');
+    let c3 = chars.next().unwrap_or('\0');
+    if c_filter(c) && c_filter(c2) && c_filter(c3) {
+        match map.get_mut(&(c_idx!(c), c_idx!(c2), c_idx!(c3))) {
+            Some(v) => {
+                v.insert(anime);
+            }
+            None => {
+                map.insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), BTreeSet::new());
+            }
+        };
+    }
+}
+
+impl<'a> OptimizedDatabase<'a> {
+    pub fn new() -> Self {
+        Self {
+            map: None,
+            search_map: None,
+        }
     }
 
-    pub fn match_names(&self, sanitized_names: &[String]) -> Vec<Option<AnimeDatabaseData>> {
-        let matcher = skim_matcher();
-        let mut name_matches = Vec::with_capacity(sanitized_names.len());
-        let mut name_heap = BinaryHeap::new();
-        for name in sanitized_names {
-            let (i, j, k) = str_idx(name);
-            let map = match self.map.get(&(i, j, k)) {
-                Some(m) => m,
-                None => continue,
-            };
-            for anime in map.iter() {
-                let title = &anime.title;
-                if let Some(weight) = matcher.fuzzy_match(name, title) {
-                    name_heap.push((weight, title));
-                }
+    pub(self) fn optimize_json_db(&mut self, json_database: &AnimeDatabaseJson) -> &OptimizedMap {
+        // `OptimizedMap` has references to `json_database`, but this is only used in the context
+        // of `JsonIndexed` which has an owned _immutable_ reference to `json_database`.
+        //
+        // Using an unsafe transmute here gets around lifetime restrictions.
+        let json_database: &AnimeDatabaseJson = unsafe { std::mem::transmute(json_database) };
+        self.map.get_or_insert_with(|| {
+            let mut map = BTreeMap::<OptimizedKey, OptimizedValue>::new();
 
-                for synonym in anime.synonyms.iter() {
-                    if let Some(weight) = matcher.fuzzy_match(name, synonym) {
-                        name_heap.push((weight, synonym));
+            for anime in json_database.data.iter() {
+                for name in anime.synonyms.iter().chain([&anime.title]) {
+                    let chars = name.chars();
+                    insert_index_map(&mut map, chars, anime);
+                }
+            }
+            map
+        })
+    }
+
+    pub(self) fn optimize_json_db_search(
+        &mut self,
+        json_database: &AnimeDatabaseJson,
+    ) -> &BTreeMap<OptimizedKey, OptimizedValue> {
+        // See comments about unsafe use in `optimized_json_db`.
+        let json_database: &AnimeDatabaseJson = unsafe { std::mem::transmute(json_database) };
+        self.search_map.get_or_insert_with(|| {
+            let mut map = BTreeMap::<OptimizedKey, OptimizedValue>::new();
+
+            for anime in json_database.data.iter() {
+                for name in anime.synonyms.iter().chain([&anime.title]) {
+                    for token in tokenize(&name).iter() {
+                        let chars = token.chars();
+                        insert_index_map(&mut map, chars, anime);
                     }
                 }
             }
-            match name_heap.pop() {
-                Some((_, k)) => name_matches.push(Some(self.find(k))),
-                None => name_matches.push(None),
-            }
-            name_heap.clear();
-        }
-        name_matches
+            map
+        })
     }
-
-    pub fn match_name(&self, sanitized_name: &str) -> Option<AnimeDatabaseData> {
-        let matcher = skim_matcher();
-        let mut name_heap = BinaryHeap::new();
-        let (i, j, k) = str_idx(sanitized_name);
-        let map = match self.map.get(&(i, j, k)) {
-            Some(m) => m,
-            None => return None,
-        };
-        for anime in map.iter() {
-            let title = &anime.title;
-            if let Some(weight) = matcher.fuzzy_match(sanitized_name, title) {
-                name_heap.push((weight, title));
-            }
-
-            for synonym in anime.synonyms.iter() {
-                if let Some(weight) = matcher.fuzzy_match(sanitized_name, synonym) {
-                    name_heap.push((weight, synonym));
-                }
-            }
-        }
-        name_heap.pop().map(|(_, k)| self.find(k))
-    }
-
-    pub fn optimize_json_db(json_database: AnimeDatabaseJson) -> Self {
-        let mut optimized = Self {
-            map: BTreeMap::new(),
-            search_map: None,
-        };
-
-        for anime in json_database.data.into_iter() {
-            {
-                // Title
-                let mut chars = anime.title.chars();
-                let c = chars.next().unwrap();
-                let c2 = chars.next().unwrap_or('\0');
-                let c3 = chars.next().unwrap_or('\0');
-                if c_filter(c) && c_filter(c2) && c_filter(c3) {
-                    match optimized.map.get_mut(&(c_idx!(c), c_idx!(c2), c_idx!(c3))) {
-                        Some(v) => v.push(anime.clone()),
-                        None => {
-                            optimized
-                                .map
-                                .insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), Vec::new());
-                        }
-                    };
-                }
-            }
-
-            for name in anime.synonyms.iter() {
-                let mut chars = name.chars();
-                let c = chars.next().unwrap();
-                let c2 = chars.next().unwrap_or('\0');
-                let c3 = chars.next().unwrap_or('\0');
-                if c_filter(c) && c_filter(c2) && c_filter(c3) {
-                    match optimized.map.get_mut(&(c_idx!(c), c_idx!(c2), c_idx!(c3))) {
-                        Some(v) => v.push(anime.clone()),
-                        None => {
-                            optimized
-                                .map
-                                .insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), Vec::new());
-                        }
-                    };
-                }
-            }
-        }
-        optimized
-    }
-
-    pub fn optimize_json_db_search(
-        optimized: OptimizedDatabase,
-        json_database: AnimeDatabaseJson,
-    ) -> OptimizedDatabase {
-        let mut optimized = OptimizedDatabase {
-            map: optimized.map,
-            search_map: None,
-        };
-        let mut map = BTreeMap::<(char, char, char), BTreeSet<String>>::new();
-
-        for anime in json_database.data.into_iter() {
-            for token in tokenize(&anime.title).iter() {
-                // Title
-                let mut chars = token.chars();
-                let c = chars.next().unwrap();
-                let c2 = chars.next().unwrap_or('\0');
-                let c3 = chars.next().unwrap_or('\0');
-                if c_filter(c) && c_filter(c2) && c_filter(c3) {
-                    match map.get_mut(&(c_idx!(c), c_idx!(c2), c_idx!(c3))) {
-                        Some(v) => {
-                            v.insert(anime.title.clone());
-                        }
-                        None => {
-                            map.insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), BTreeSet::new());
-                        }
-                    };
-                }
-            }
-
-            for name in anime.synonyms.iter() {
-                for token in tokenize(&name).iter() {
-                    let mut chars = token.chars();
-                    let c = chars.next().unwrap();
-                    let c2 = chars.next().unwrap_or('\0');
-                    let c3 = chars.next().unwrap_or('\0');
-                    if c_filter(c) && c_filter(c2) && c_filter(c3) {
-                        match map.get_mut(&(c_idx!(c), c_idx!(c2), c_idx!(c3))) {
-                            Some(v) => {
-                                v.insert(name.clone());
-                            }
-                            None => {
-                                map.insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), BTreeSet::new());
-                            }
-                        };
-                    }
-                }
-            }
-        }
-        optimized.search_map = Some(map);
-        optimized
-    }
-
 }

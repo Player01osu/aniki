@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use self::json_database::{open_json_db, AnimeDatabaseData, OptimizedDatabase};
+use self::json_database::{AnimeDatabaseData, JsonIndexed};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anime {
@@ -31,11 +31,11 @@ pub struct Anime {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Database {
+pub struct Database<'a> {
     anime_map: BTreeMap<Box<str>, Anime>,
     previous_update: BTreeMap<String, u64>,
     #[serde(skip)]
-    optimized_db: Option<OptimizedDatabase>,
+    indexed_db: JsonIndexed<'a>,
 }
 
 pub type EpisodeMap = Vec<(Episode, Vec<String>)>;
@@ -319,36 +319,46 @@ fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl Database {
+impl<'a> Database<'a> {
     pub fn new(path: impl AsRef<str>, anime_directories: Vec<impl AsRef<str>>) -> Result<Self> {
         let path = path.as_ref();
         match std::fs::read(path) {
             Ok(v) => {
+                // TODO: Large bottleneck at startup!
+                //
+                // On my machine with 35 folders, it takes 100ms to deserialize
+                // in release mode.
+                //
+                // Honestly consider developing my own binary format because most
+                // other options are way too limited or way too slow.
                 let mut db = flexbuffers::from_slice::<Self>(&v)?;
+
+                // Check if directory has been updated
                 for directory in anime_directories.iter() {
                     let directory = directory.as_ref();
                     let last_modified = dir_modified_time(directory);
+                    let mut buf = String::new();
+
                     match db.previous_update.get(directory) {
                         Some(last_updated) => {
+                            // Updated directory
                             if *last_updated < last_modified {
-                                db.update_directory(directory);
+                                db.update_directory(directory, get_time(), &mut buf);
                             }
                         }
+                        // Added new directory
                         None => {
-                            db.update_directory(directory);
+                            db.update_directory(directory, get_time(), &mut buf);
                         }
                     }
                 }
                 Ok(db)
             }
             Err(_) => {
-                let json_db = open_json_db("");
-                let optimized_db = OptimizedDatabase::optimize_json_db(json_db);
-
                 let mut db = Self {
                     anime_map: BTreeMap::new(),
                     previous_update: BTreeMap::new(),
-                    optimized_db: Some(optimized_db),
+                    indexed_db: JsonIndexed::new(),
                 };
                 db.update(anime_directories);
                 Ok(db)
@@ -376,13 +386,8 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_directory(&mut self, directory: impl AsRef<str>) {
-        let time = get_time();
-        let optimized = self.optimized_db.get_or_insert_with(|| {
-            let json_db = open_json_db("");
-            OptimizedDatabase::optimize_json_db(json_db)
-        });
-        let mut sanitized_name = String::with_capacity(64);
+    pub fn update_directory(&mut self, directory: impl AsRef<str>, time: u64, buf: &mut String) {
+        let mut sanitized_name = buf;
 
         read_dir(directory.as_ref())
             .unwrap()
@@ -394,8 +399,16 @@ impl Database {
                 match self.anime_map.entry(name.clone().into()) {
                     Entry::Vacant(v) => {
                         sanitize::sanitize_name(&mut chars, &mut sanitized_name);
-                        let metadata = optimized.match_name(sanitized_name.trim());
-                        v.insert(Anime::from_path(path, name, metadata, time));
+
+                        // `JsonIndexed::map()` calls to `optimize_json_db`, which
+                        // does not invalidate any references.
+                        //
+                        // Unsafe used to get around lifetime restrictions.
+                        let indexed_json: &mut JsonIndexed =
+                            unsafe { std::mem::transmute(&mut self.indexed_db) };
+                        let map = indexed_json.map();
+                        let metadata = self.indexed_db.match_name(map, sanitized_name.trim());
+                        v.insert(Anime::from_path(path, name, metadata.cloned(), time));
                         sanitized_name.clear();
                     }
                     Entry::Occupied(mut v) => {
@@ -409,36 +422,11 @@ impl Database {
 
     pub fn update(&mut self, anime_directories: Vec<impl AsRef<str>>) {
         let time = get_time();
-        let optimized = self.optimized_db.get_or_insert_with(|| {
-            let json_db = open_json_db("");
-            OptimizedDatabase::optimize_json_db(json_db)
-        });
         let mut sanitized_name = String::with_capacity(64);
 
-        anime_directories
-            .iter()
-            .filter_map(|s| read_dir(s.as_ref()).ok())
-            .flat_map(|s| {
-                s.filter_map(|v| v.ok())
-                    .map(|v| (o_to_str!(v.file_name()), v.path()))
-            })
-            .for_each(|(name, path)| {
-                let chars = name.clone();
-                let mut chars = chars.chars();
-                match self.anime_map.entry(name.clone().into()) {
-                    Entry::Vacant(v) => {
-                        sanitize::sanitize_name(&mut chars, &mut sanitized_name);
-                        let metadata = optimized.match_name(sanitized_name.trim());
-                        v.insert(Anime::from_path(path, name, metadata, time));
-                        sanitized_name.clear();
-                    }
-                    Entry::Occupied(mut v) => {
-                        if v.get().last_updated < dir_modified_time(path) {
-                            v.get_mut().update_episodes();
-                        }
-                    }
-                };
-            });
+        for directory in anime_directories {
+            self.update_directory(directory, time, &mut sanitized_name);
+        }
     }
 
     pub fn write(&mut self, path: impl AsRef<Path>) -> Result<()> {

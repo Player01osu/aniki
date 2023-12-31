@@ -144,8 +144,8 @@ pub struct Style {
     pub font_info: FontInfo,
 }
 
-pub struct MostlyStatic {
-    pub animes: Database,
+pub struct MostlyStatic<'a> {
+    pub animes: Database<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1381,8 +1381,8 @@ fn draw(app: &mut App, mostly_static: &mut MostlyStatic) {
     }
 }
 
-impl MostlyStatic {
-    pub fn new(database: Database) -> Self {
+impl<'a> MostlyStatic<'a> {
+    pub fn new(database: Database<'a>) -> Self {
         Self { animes: database }
     }
 }
