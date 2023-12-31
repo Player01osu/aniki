@@ -33,7 +33,7 @@ pub struct Anime {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Database<'a> {
     anime_map: BTreeMap<Box<str>, Anime>,
-    previous_update: BTreeMap<String, u64>,
+    previous_update: Vec<(Box<str>, u64)>,
     #[serde(skip)]
     indexed_db: JsonIndexed<'a>,
 }
@@ -339,8 +339,12 @@ impl<'a> Database<'a> {
                     let last_modified = dir_modified_time(directory);
                     let mut buf = String::new();
 
-                    match db.previous_update.get(directory) {
-                        Some(last_updated) => {
+                    match db
+                        .previous_update
+                        .iter()
+                        .find(|(s, _)| directory.eq(s.as_ref()))
+                    {
+                        Some((_, last_updated)) => {
                             // Updated directory
                             if *last_updated < last_modified {
                                 db.update_directory(directory, get_time(), &mut buf);
@@ -357,7 +361,7 @@ impl<'a> Database<'a> {
             Err(_) => {
                 let mut db = Self {
                     anime_map: BTreeMap::new(),
-                    previous_update: BTreeMap::new(),
+                    previous_update: Vec::new(),
                     indexed_db: JsonIndexed::new(),
                 };
                 db.update(anime_directories);
