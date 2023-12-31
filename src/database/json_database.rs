@@ -3,7 +3,7 @@ use crate::database::Database;
 use fuzzy_matcher::skim::{SkimMatcherV2, SkimScoreConfig};
 use fuzzy_matcher::FuzzyMatcher;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::collections::{BTreeMap, BinaryHeap};
 use std::path::Path;
 use std::str::Chars;
 
@@ -53,7 +53,7 @@ pub struct AnimeDatabaseJson {
 
 pub type OptimizedMap<'a> = BTreeMap<OptimizedKey, OptimizedValue<'a>>;
 type OptimizedKey = (char, char, char);
-type OptimizedValue<'a> = BTreeSet<&'a AnimeDatabaseData>;
+type OptimizedValue<'a> = Vec<&'a AnimeDatabaseData>;
 
 #[derive(Debug)]
 struct OptimizedDatabase<'a> {
@@ -239,10 +239,10 @@ fn insert_index_map<'a>(
     if c_filter(c) && c_filter(c2) && c_filter(c3) {
         match map.get_mut(&(c_idx!(c), c_idx!(c2), c_idx!(c3))) {
             Some(v) => {
-                v.insert(anime);
+                v.push(anime);
             }
             None => {
-                map.insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), BTreeSet::new());
+                map.insert((c_idx!(c), c_idx!(c2), c_idx!(c3)), Vec::new());
             }
         };
     }
