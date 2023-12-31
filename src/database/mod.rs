@@ -7,16 +7,14 @@ use episode::Episode;
 use flexbuffers::{DeserializationError, SerializationError};
 use std::collections::btree_map::Entry;
 use std::fs::{metadata, read_dir, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::{collections::BTreeMap, path::Path, time::SystemTime};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use self::json_database::{
-    match_name, open_json_db, optimize_json_db, AnimeDatabaseData, OptimizedDatabase,
-};
+use self::json_database::{open_json_db, AnimeDatabaseData, OptimizedDatabase};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anime {
@@ -216,7 +214,9 @@ impl Anime {
             Some(episode)
         } else if let Some(episode) = get_episode(season + 1, 0) {
             Some(episode)
-        } else { get_episode(season + 1, 1) }
+        } else {
+            get_episode(season + 1, 1)
+        }
     }
 
     pub fn filename(&self) -> &str {
@@ -281,7 +281,7 @@ impl Anime {
             Some(_) => {
                 unsafe { self.update_watched_unchecked(watched) };
                 Ok(())
-            },
+            }
             None => Err(Err::InvalidEpisode(InvalidEpisodeError::NotExist {
                 anime: self.path.to_string(),
                 episode: watched,
@@ -309,7 +309,7 @@ fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
             .await
             .with_context(|| "Failed to connect to url")?
             .bytes()
-        .await?;
+            .await?;
         tokio::fs::write(path, data)
             .await
             .with_context(|| "Failed to write to file")?;
@@ -329,7 +329,7 @@ impl Database {
             }
             Err(_) => {
                 let json_db = open_json_db("");
-                let optimized_db = optimize_json_db(json_db);
+                let optimized_db = OptimizedDatabase::optimize_json_db(json_db);
 
                 let mut db = Self {
                     anime_map: BTreeMap::new(),
@@ -361,11 +361,42 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_directory(&mut self, directory: impl AsRef<str>) {
+        let time = get_time();
+        let optimized = self.optimized_db.get_or_insert_with(|| {
+            let json_db = open_json_db("");
+            OptimizedDatabase::optimize_json_db(json_db)
+        });
+        let mut sanitized_name = String::with_capacity(64);
+
+        read_dir(directory.as_ref())
+            .unwrap()
+            .filter_map(|v| v.ok())
+            .map(|v| (o_to_str!(v.file_name()), v.path()))
+            .for_each(|(name, path)| {
+                let chars = name.clone();
+                let mut chars = chars.chars();
+                match self.anime_map.entry(name.clone().into()) {
+                    Entry::Vacant(v) => {
+                        sanitize::sanitize_name(&mut chars, &mut sanitized_name);
+                        let metadata = optimized.match_name(sanitized_name.trim());
+                        v.insert(Anime::from_path(path, name, metadata, time));
+                        sanitized_name.clear();
+                    }
+                    Entry::Occupied(mut v) => {
+                        if v.get().last_updated < dir_modified_time(path) {
+                            v.get_mut().update_episodes();
+                        }
+                    }
+                };
+            });
+    }
+
     pub fn update(&mut self, anime_directories: Vec<impl AsRef<str>>) {
         let time = get_time();
         let optimized = self.optimized_db.get_or_insert_with(|| {
             let json_db = open_json_db("");
-            optimize_json_db(json_db)
+            OptimizedDatabase::optimize_json_db(json_db)
         });
         let mut sanitized_name = String::with_capacity(64);
 
@@ -382,8 +413,7 @@ impl Database {
                 match self.anime_map.entry(name.clone().into()) {
                     Entry::Vacant(v) => {
                         sanitize::sanitize_name(&mut chars, &mut sanitized_name);
-                        let metadata =
-                            match_name(sanitized_name.trim(), optimized);
+                        let metadata = optimized.match_name(sanitized_name.trim());
                         v.insert(Anime::from_path(path, name, metadata, time));
                         sanitized_name.clear();
                     }
