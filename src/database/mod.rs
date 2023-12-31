@@ -33,6 +33,7 @@ pub struct Anime {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Database {
     anime_map: BTreeMap<Box<str>, Anime>,
+    previous_update: BTreeMap<String, u64>,
     #[serde(skip)]
     optimized_db: Option<OptimizedDatabase>,
 }
@@ -321,11 +322,24 @@ fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
 impl Database {
     pub fn new(path: impl AsRef<str>, anime_directories: Vec<impl AsRef<str>>) -> Result<Self> {
         let path = path.as_ref();
-        match File::open(path) {
-            Ok(mut v) => {
-                let mut slice = vec![];
-                v.read_to_end(&mut slice)?;
-                Ok(flexbuffers::from_slice::<Self>(&slice)?)
+        match std::fs::read(path) {
+            Ok(v) => {
+                let mut db = flexbuffers::from_slice::<Self>(&v)?;
+                for directory in anime_directories.iter() {
+                    let directory = directory.as_ref();
+                    let last_modified = dir_modified_time(directory);
+                    match db.previous_update.get(directory) {
+                        Some(last_updated) => {
+                            if *last_updated < last_modified {
+                                db.update_directory(directory);
+                            }
+                        }
+                        None => {
+                            db.update_directory(directory);
+                        }
+                    }
+                }
+                Ok(db)
             }
             Err(_) => {
                 let json_db = open_json_db("");
@@ -333,6 +347,7 @@ impl Database {
 
                 let mut db = Self {
                     anime_map: BTreeMap::new(),
+                    previous_update: BTreeMap::new(),
                     optimized_db: Some(optimized_db),
                 };
                 db.update(anime_directories);
