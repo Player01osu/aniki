@@ -8,6 +8,7 @@ use flexbuffers::{DeserializationError, SerializationError};
 use std::collections::btree_map::Entry;
 use std::fs::{metadata, read_dir, File};
 use std::io::Write;
+use std::time::SystemTimeError;
 use std::{collections::BTreeMap, path::Path, time::SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -36,6 +37,23 @@ pub struct Database<'a> {
     previous_update: Vec<(Box<str>, u64)>,
     #[serde(skip)]
     indexed_db: Option<JsonIndexed<'a>>,
+    #[serde(skip)]
+    cached_view: CachedView<'a>,
+}
+
+#[derive(Debug)]
+struct CachedView<'a> {
+    last_updated: u64,
+    animes: Vec<&'a mut Anime>,
+}
+
+impl Default for CachedView<'_> {
+    fn default() -> Self {
+        Self {
+            last_updated: 0,
+            animes: vec![],
+        }
+    }
 }
 
 pub type EpisodeMap = Vec<(Episode, Vec<String>)>;
@@ -54,6 +72,8 @@ pub enum DatabaseError {
     Deserialization(DeserializationError),
     #[error("{0}")]
     Serialization(SerializationError),
+    #[error("{0}")]
+    SystemTime(SystemTimeError),
     #[error("Invalid path to episode")]
     InvalidFile,
     #[error("Unable to convert file to UTF-8 string")]
@@ -67,6 +87,12 @@ type Err = DatabaseError;
 impl From<std::io::Error> for Err {
     fn from(v: std::io::Error) -> Self {
         Self::IO(v)
+    }
+}
+
+impl From<SystemTimeError> for Err {
+    fn from(v: SystemTimeError) -> Self {
+        Self::SystemTime(v)
     }
 }
 
@@ -291,14 +317,14 @@ impl Anime {
     }
 }
 
-fn dir_modified_time(path: impl AsRef<Path>) -> u64 {
-    metadata(path)
-        .unwrap()
-        .modified()
-        .unwrap()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+fn dir_modified_time(path: impl AsRef<Path>) -> Result<u64> {
+    match metadata(path) {
+        Ok(v) => Ok(v
+            .modified()?
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs()),
+        Err(_) => Ok(0),
+    }
 }
 
 fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
@@ -336,8 +362,12 @@ impl<'a> Database<'a> {
                 // Check if directory has been updated
                 for directory in anime_directories.iter() {
                     let directory = directory.as_ref();
-                    let last_modified = dir_modified_time(directory);
+                    let last_modified = dir_modified_time(directory)?;
                     let mut buf = String::new();
+
+                    if !Path::new(directory).exists() {
+                        continue;
+                    }
 
                     match db
                         .previous_update
@@ -356,6 +386,8 @@ impl<'a> Database<'a> {
                         }
                     }
                 }
+
+                db.update_cached();
                 Ok(db)
             }
             Err(_) => {
@@ -363,6 +395,7 @@ impl<'a> Database<'a> {
                     anime_map: BTreeMap::new(),
                     previous_update: Vec::new(),
                     indexed_db: None,
+                    cached_view: CachedView::default(),
                 };
                 db.update(anime_directories);
                 Ok(db)
@@ -371,7 +404,7 @@ impl<'a> Database<'a> {
     }
 
     pub fn len(&self) -> usize {
-        self.anime_map.len()
+        self.cached_view.animes.len()
     }
 
     pub fn retrieve_images(&mut self, image_directory: &str) -> anyhow::Result<()> {
@@ -419,7 +452,7 @@ impl<'a> Database<'a> {
                         sanitized_name.clear();
                     }
                     Entry::Occupied(mut v) => {
-                        if v.get().last_updated < dir_modified_time(path) {
+                        if v.get().last_updated < dir_modified_time(path).unwrap() {
                             v.get_mut().update_episodes();
                         }
                     }
@@ -436,6 +469,33 @@ impl<'a> Database<'a> {
         }
     }
 
+    pub fn update_watched(&mut self, anime: &mut Anime, episode: Episode) -> Result<()> {
+        anime.update_watched(episode)?;
+        anime.update_episodes();
+        Ok(())
+    }
+
+    pub fn update_cached(&mut self) {
+        // Unsafe is needed as `cached_view` takes mutable references to
+        // `anime_map`.
+        //
+        // This unties the lifetime of `anime_map` from `self` and allows
+        // multiple mutable references.
+        //
+        // Doing this will not cause invariances unless `anime_map` is
+        // mutated (such as inserting or removing), *so don't do that*.
+        let anime_map: &mut BTreeMap<Box<str>, Anime> =
+            unsafe { std::mem::transmute(&mut self.anime_map) };
+        self.cached_view.last_updated = get_time();
+        self.cached_view.animes = anime_map
+            .values_mut()
+            .filter(|v| Path::new(&v.path).exists())
+            .collect();
+        self.cached_view
+            .animes
+            .sort_by(|a, b| b.last_watched.cmp(&a.last_watched));
+    }
+
     pub fn write(&mut self, path: impl AsRef<Path>) -> Result<()> {
         let mut f = File::create(path)?;
         let mut s = flexbuffers::FlexbufferSerializer::new();
@@ -444,11 +504,21 @@ impl<'a> Database<'a> {
         Ok(())
     }
 
-    pub fn animes(&mut self) -> Box<[&mut Anime]> {
-        let mut anime_list = self.anime_map.values_mut().collect::<Box<[&mut Anime]>>();
-        anime_list.sort_by(|a, b| b.last_watched.cmp(&a.last_watched));
+    pub fn animes(&mut self) -> &mut [&mut Anime] {
+        if self
+            .cached_view
+            .animes
+            .iter()
+            .any(|v| v.last_watched > self.cached_view.last_updated)
+        {
+            self.update_cached();
+        }
 
-        anime_list
+        // Unsafe is needed to untie the lifetime of `cached_view` from `self`.
+        //
+        // References to this slice is only expected to live for one frame, and
+        // `cached_view` should not be mutated while being borrowed.
+        unsafe { std::mem::transmute(self.cached_view.animes.as_mut_slice()) }
     }
 
     pub fn get_anime(&mut self, anime: impl AsRef<str>) -> Option<&mut Anime> {
