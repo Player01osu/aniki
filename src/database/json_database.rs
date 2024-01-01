@@ -249,14 +249,14 @@ fn insert_index_map<'a>(
 }
 
 impl<'a> OptimizedDatabase<'a> {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             map: None,
             search_map: None,
         }
     }
 
-    pub(self) fn optimize_json_db(&mut self, json_database: &AnimeDatabaseJson) -> &OptimizedMap {
+    fn optimize_json_db(&mut self, json_database: &AnimeDatabaseJson) -> &OptimizedMap {
         // `OptimizedMap` has references to `json_database`, but this is only used in the context
         // of `JsonIndexed` which has an owned _immutable_ reference to `json_database`.
         //
@@ -275,7 +275,7 @@ impl<'a> OptimizedDatabase<'a> {
         })
     }
 
-    pub(self) fn optimize_json_db_search(
+    fn optimize_json_db_search(
         &mut self,
         json_database: &AnimeDatabaseJson,
     ) -> &BTreeMap<OptimizedKey, OptimizedValue> {
