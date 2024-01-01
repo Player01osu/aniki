@@ -35,7 +35,7 @@ pub struct Database<'a> {
     anime_map: BTreeMap<Box<str>, Anime>,
     previous_update: Vec<(Box<str>, u64)>,
     #[serde(skip)]
-    indexed_db: JsonIndexed<'a>,
+    indexed_db: Option<JsonIndexed<'a>>,
 }
 
 pub type EpisodeMap = Vec<(Episode, Vec<String>)>;
@@ -362,7 +362,7 @@ impl<'a> Database<'a> {
                 let mut db = Self {
                     anime_map: BTreeMap::new(),
                     previous_update: Vec::new(),
-                    indexed_db: JsonIndexed::new(),
+                    indexed_db: None,
                 };
                 db.update(anime_directories);
                 Ok(db)
@@ -411,7 +411,10 @@ impl<'a> Database<'a> {
                         let indexed_json: &mut JsonIndexed =
                             unsafe { std::mem::transmute(&mut self.indexed_db) };
                         let map = indexed_json.map();
-                        let metadata = self.indexed_db.match_name(map, sanitized_name.trim());
+                        let metadata = self
+                            .indexed_db
+                            .get_or_insert_with(JsonIndexed::new)
+                            .match_name(map, sanitized_name.trim());
                         v.insert(Anime::from_path(path, name, metadata.cloned(), time));
                         sanitized_name.clear();
                     }
