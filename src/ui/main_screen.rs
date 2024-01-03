@@ -13,9 +13,8 @@ use crate::{
 
 use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::{
-    draw_button, draw_image_clip, draw_text_centered, text_size, Layout, MostlyStatic, Screen,
-    Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR,
-    TITLE_FONT_INFO, color_hex_a,
+    color_hex_a, draw_button, draw_image_clip, draw_text_centered, text_size, Layout, MostlyStatic,
+    Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR, TITLE_FONT_INFO,
 };
 
 const CARD_WIDTH: u32 = 200;
@@ -97,8 +96,17 @@ fn handle_main_search_events(app: &mut App) {
 
 fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
     let font_info = BACK_BUTTON_FONT_INFO;
-    let (text_width, height) = app.text_manager.text_size(font_info, &app.text_input);
-    let layout = Layout::new(x, y, width, height);
+    let pad_side = 5;
+    let pad_height = 2;
+    let (text_width, text_height) = app.text_manager.text_size(font_info, &app.text_input);
+    let layout = Layout::new(x, y, width, text_height);
+    let text_shift_x = text_width.saturating_sub(width - pad_side as u32 * 2);
+    let text_layout = Layout::new(
+        layout.x + pad_side - text_shift_x as i32,
+        y,
+        width,
+        text_height,
+    );
 
     app.input_util.start();
 
@@ -107,13 +115,30 @@ fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
     app.canvas.draw_rect(layout.to_rect()).unwrap();
 
     // Draw cursor
-    let pad_height = 2;
     app.canvas.set_draw_color(color_hex(0xB0B0B0));
-    app.canvas.fill_rect(rect!(x + text_width as i32, y + pad_height, 1, height - (pad_height as u32 * 2))).unwrap();
+    app.canvas
+        .fill_rect(rect!(
+            text_layout.x + text_width as i32,
+            text_layout.y + pad_height,
+            1,
+            text_layout.height - (pad_height as u32 * 2)
+        ))
+        .unwrap();
 
     if !app.text_input.is_empty() {
         let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
-        draw_text(app, font_info, input, color_hex(0x909090), x, y, None, None);
+        app.canvas.set_clip_rect(layout.to_rect());
+        draw_text(
+            app,
+            font_info,
+            input,
+            color_hex(0x909090),
+            text_layout.x,
+            text_layout.y,
+            None,
+            None,
+        );
+        app.canvas.set_clip_rect(None);
     }
 }
 
@@ -137,11 +162,37 @@ fn draw_main_anime_search(app: &mut App, mostly_static: &mut MostlyStatic, layou
     }
 }
 
-fn draw_main_anime_alias(app: &mut App, mostly_static: &mut MostlyStatic, layout: Layout, alias_id: u32) {
-    let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, &app.text_input);
-    let search_width = layout.width * 8 / 9;
-    let search_x = layout.x + ((layout.width - search_width) as i32 / 2);
-    let search_y = layout.y + (layout.height as i32 - text_height as i32) / 2;
+fn draw_main_anime_alias(
+    app: &mut App,
+    mostly_static: &mut MostlyStatic,
+    layout: Layout,
+    alias_id: u32,
+) {
+    let anime = &mut mostly_static.animes.animes()[alias_id as usize];
+    let (_, text_height) = app
+        .text_manager
+        .text_size(BACK_BUTTON_FONT_INFO, &app.text_input);
+    let (search_layout, option_layout) = layout.split_hori(text_height + 40, layout.height);
+    let search_width = search_layout.width * 8 / 9;
+    let search_x = search_layout.x + ((search_layout.width - search_width) as i32 / 2);
+    let search_y = search_layout.y + (search_layout.height as i32 - text_height as i32) / 2;
+    let options: Box<[&str]> = {
+        if anime.title() == anime.filename() {
+            [unsafe { &*(anime.title() as *const _) }].into()
+        } else {
+            unsafe {
+                [
+                    &*(anime.title() as *const _),
+                    &*(anime.filename() as *const _),
+                ]
+            }
+            .into()
+        }
+    };
+    let height = option_layout.height - 5;
+    let (_, option_layout) = option_layout.split_hori(option_layout.height - height, height);
+    let option_layouts = option_layout.split_even_hori(text_height + 20, options.len());
+
     app.canvas.set_draw_color(color_hex(0x303030));
     app.canvas.fill_rect(layout.to_rect()).unwrap();
 
@@ -151,8 +202,14 @@ fn draw_main_anime_alias(app: &mut App, mostly_static: &mut MostlyStatic, layout
 
     draw_input_box(app, search_x, search_y, search_width);
 
+    for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
+        if draw_option(app, layout, option) {
+            anime.set_alias(option.to_string());
+            app.main_alias_anime = None;
+        }
+    }
+
     if app.keydown(Keycode::Return) {
-        let anime = &mut mostly_static.animes.animes()[alias_id as usize];
         anime.set_alias(app.text_input.clone());
         app.main_alias_anime = None;
     }
@@ -162,6 +219,49 @@ fn draw_main_anime_alias(app: &mut App, mostly_static: &mut MostlyStatic, layout
         app.main_search_anime = None;
         app.main_alias_anime = None;
     }
+}
+
+fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
+    let font_info = BACK_BUTTON_FONT_INFO;
+    if layout.to_rect().contains_point(app.mouse_points()) {
+        app.canvas.set_draw_color(color_hex(0x505050));
+        app.canvas.fill_rect(layout.to_rect()).unwrap();
+
+        if app.mouse_clicked_left() {
+            return true;
+        }
+    }
+    let (text_width, text_height) = app.text_manager.text_size(font_info, option);
+
+    let side_pad = 5;
+    if text_width > layout.width - side_pad {
+        let layout = layout.pad_left(side_pad as i32).pad_right(side_pad as i32);
+        app.canvas.set_clip_rect(layout.to_rect());
+        draw_text(
+            app,
+            font_info,
+            option,
+            color_hex(0xa0a0a0),
+            layout.x,
+            layout.y + (layout.height as i32 - text_height as i32) / 2,
+            None,
+            None,
+        );
+        app.canvas.set_clip_rect(None);
+    } else {
+        draw_text_centered(
+            app,
+            font_info,
+            option,
+            color_hex(0xa0a0a0),
+            layout.x + layout.width as i32 / 2,
+            layout.y + layout.height as i32 / 2,
+            None,
+            None,
+        );
+    }
+
+    false
 }
 
 pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
@@ -206,11 +306,7 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
 
     let anime_list = animes.animes();
     let mut any = false;
-    for (idx, (grid_space, anime)) in card_layouts
-        .iter()
-        .zip(anime_list.iter_mut())
-        .enumerate()
-    {
+    for (idx, (grid_space, anime)) in card_layouts.iter().zip(anime_list.iter_mut()).enumerate() {
         if grid_space.y + grid_space.height as i32 > 0 {
             if grid_space.y > window_height as i32 {
                 break;
@@ -259,9 +355,9 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
 
     // Draw alias
     if let Some(alias_id) = app.main_alias_anime {
-        let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
+        //let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
         let width = window_width * 2 / 5;
-        let height = text_height + 40;
+        let height = 300;
         let x = (window_width - width) / 2;
         let y = (window_height - height) / 2;
         let float_layout = Layout::new(x as i32, y as i32, width, height);
