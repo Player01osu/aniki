@@ -1,8 +1,8 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 use config::Config;
-use database::Database;
 use database::json_database::AnimeDatabaseData;
+use database::Database;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
 use sdl2::rect::Rect;
@@ -14,9 +14,9 @@ use sdl2::{
     render::{Canvas, TextureCreator},
 };
 use std::collections::BTreeMap;
+use std::fs;
 use std::rc::Rc;
 use std::time::Duration;
-use std::fs;
 use ui::FontManager;
 use ui::MostlyStatic;
 use ui::Screen;
@@ -69,6 +69,7 @@ pub struct App<'a, 'b> {
     pub keycode_map: BTreeMap<u32, bool>,
     pub keymod: keyboard::Mod,
 }
+
 impl<'a, 'b> App<'a, 'b> {
     pub fn new(
         canvas: Canvas<Window>,
@@ -182,7 +183,7 @@ impl<'a, 'b> App<'a, 'b> {
 
 fn lock_file() -> anyhow::Result<()> {
     match fs::read_to_string("/tmp/aniki.lock") {
-        Ok(v) => Err(anyhow::anyhow!("Lock file exists! PID:{v}")),
+        Ok(v) => anyhow::bail!("Lock file exists! PID:{v}"),
         Err(_) => {
             fs::write("/tmp/aniki.lock", std::process::id().to_string())?;
             Ok(())
@@ -210,30 +211,24 @@ async fn main() -> anyhow::Result<()> {
         .map(|v| v.to_string_lossy().to_string())
         .collect();
 
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+    let sdl_context = sdl2::init().map_err(|e| anyhow::anyhow!(e))?;
+    let video_subsystem = sdl_context.video().map_err(|e| anyhow::anyhow!(e))?;
     video_subsystem.enable_screen_saver();
 
     let window = video_subsystem
         .window("Aniki", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .resizable()
-        .build()
-        .unwrap();
+        .build()?;
 
     let input_util = video_subsystem.text_input();
     input_util.stop();
 
-    let mut canvas = window
-        .into_canvas()
-        .present_vsync()
-        .accelerated()
-        .build()
-        .unwrap();
-    canvas.window_mut().set_minimum_size(700, 500).unwrap();
+    let mut canvas = window.into_canvas().present_vsync().accelerated().build()?;
+    canvas.window_mut().set_minimum_size(700, 500)?;
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
     let texture_creator = canvas.texture_creator();
-    let ttf_ctx = sdl2::ttf::init().unwrap();
+    let ttf_ctx = sdl2::ttf::init()?;
     let mut app = App::new(
         canvas,
         input_util,
@@ -243,13 +238,13 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // TODO: Run this asynchronously and poll in draw loop
-    let mut database = Database::new(database_path, video_paths).unwrap();
-    database.retrieve_images(&thumbnail_path).unwrap();
+    let mut database = Database::new(database_path, video_paths)?;
+    database.retrieve_images(&thumbnail_path)?;
     let mut mostly_static = MostlyStatic::new(database);
 
     app.canvas.clear();
     app.canvas.present();
-    let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
         if app.canvas.window().has_mouse_focus() {
             app.reset_frame_state()
@@ -322,7 +317,7 @@ async fn main() -> anyhow::Result<()> {
     {
         return Ok(());
     }
-    mostly_static.animes.write(cfg.database_path()).unwrap();
+    mostly_static.animes.write(cfg.database_path())?;
 
     release_lock_file()?;
     Ok(())
