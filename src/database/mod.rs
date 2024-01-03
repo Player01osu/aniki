@@ -178,6 +178,10 @@ impl Anime {
         self.alias = Some(s);
     }
 
+    pub fn set_metadata(&mut self, metadata: Option<AnimeDatabaseData>) {
+        self.metadata = metadata;
+    }
+
     pub fn len(&self) -> usize {
         self.episodes.len()
     }
@@ -541,6 +545,12 @@ impl<'a> Database<'a> {
 
     pub fn get_anime(&mut self, anime: impl AsRef<str>) -> Option<&mut Anime> {
         self.anime_map.get_mut(anime.as_ref())
+    }
+
+    pub fn fuzzy_find_anime(&mut self, input: &str) -> Box<[&'a AnimeDatabaseData]> {
+        self.indexed_db
+            .get_or_insert_with(JsonIndexed::new)
+            .fuzzy_find_anime(input)
     }
 }
 

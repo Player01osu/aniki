@@ -4,6 +4,7 @@ use sdl2::{
     url::open_url,
 };
 
+use crate::database::json_database::AnimeDatabaseData;
 use crate::{
     database::{self, Database},
     rect,
@@ -13,8 +14,9 @@ use crate::{
 
 use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::{
-    color_hex_a, draw_button, draw_image_clip, draw_text_centered, text_size, Layout, MostlyStatic,
-    Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR, TITLE_FONT_INFO,
+    color_hex_a, draw_button, draw_image_clip, draw_text_centered, text_size, Layout,
+    MostlyStatic, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR,
+    TITLE_FONT_INFO,
 };
 
 const CARD_WIDTH: u32 = 200;
@@ -142,7 +144,34 @@ fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
     }
 }
 
-fn draw_main_anime_search(app: &mut App, mostly_static: &mut MostlyStatic, layout: Layout) {
+fn draw_main_anime_search(
+    app: &mut App,
+    mostly_static: &mut MostlyStatic,
+    layout: Layout,
+    search_id: u32,
+) {
+    let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
+    let anime = &mut mostly_static.animes.animes()[search_id as usize];
+    let options = {
+        let search_previous: &mut Option<(String, Box<[*const AnimeDatabaseData]>)> =
+            unsafe { &mut *(&mut app.main_search_previous as *mut _) };
+        match search_previous {
+            Some(prev) if prev.0 == app.text_input => &prev.1,
+            _ => {
+                let animes = mostly_static.animes.fuzzy_find_anime(&app.text_input);
+                let animes_cast: Box<[*const AnimeDatabaseData]> = animes
+                    .iter()
+                    .map(|v| (*v) as *const AnimeDatabaseData)
+                    .collect();
+                let (_, search) =
+                    search_previous.insert((app.text_input.clone(), animes_cast.clone()));
+                search
+            }
+        }
+    };
+    let (search_layout, option_layout) = layout.split_hori(text_height + 20, layout.height);
+    let option_layouts = option_layout.split_even_hori(text_height + 20, options.len());
+
     app.canvas.set_draw_color(color_hex(0x303030));
     app.canvas.fill_rect(layout.to_rect()).unwrap();
 
@@ -150,15 +179,30 @@ fn draw_main_anime_search(app: &mut App, mostly_static: &mut MostlyStatic, layou
     app.canvas.set_draw_color(color_hex(0x101010));
     app.canvas.fill_rect(layout.to_rect()).unwrap();
 
-    let search_width = layout.width * 8 / 9;
-    let search_x = layout.x + ((layout.width - search_width) as i32 / 2);
-    let search_y = layout.y + 10;
+    for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
+        let option = unsafe { &**option };
+        if draw_option(app, layout, &option.title()) {
+            anime.set_metadata(Some((*option).clone()));
+            mostly_static
+                .animes
+                .retrieve_images(&app.thumbnail_path)
+                .unwrap();
+            app.main_search_anime = None;
+            app.input_util.stop();
+            return;
+        }
+    }
+
+    let search_width = search_layout.width * 8 / 9;
+    let search_x = search_layout.x + ((layout.width - search_width) as i32 / 2);
+    let search_y = search_layout.y + 10;
     draw_input_box(app, search_x, search_y, search_width);
 
     if app.mouse_clicked_left() && !layout.to_rect().contains_point(app.mouse_points()) {
         app.mouse_clicked_left_unset();
         app.main_search_anime = None;
         app.main_alias_anime = None;
+        app.text_input.clear();
     }
 }
 
@@ -206,12 +250,16 @@ fn draw_main_anime_alias(
         if draw_option(app, layout, option) {
             anime.set_alias(option.to_string());
             app.main_alias_anime = None;
+            app.text_input.clear();
+            app.input_util.stop();
         }
     }
 
     if app.keydown(Keycode::Return) {
         anime.set_alias(app.text_input.clone());
         app.main_alias_anime = None;
+        app.text_input.clear();
+        app.input_util.stop();
     }
 
     if app.mouse_clicked_left() && !layout.to_rect().contains_point(app.mouse_points()) {
@@ -350,7 +398,7 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         let y = (window_height - height) / 2;
         let float_layout = Layout::new(x as i32, y as i32, width, height);
 
-        draw_main_anime_search(app, mostly_static, float_layout);
+        draw_main_anime_search(app, mostly_static, float_layout, search_id);
     }
 
     // Draw alias

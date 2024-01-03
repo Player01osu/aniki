@@ -2,9 +2,10 @@
 #![allow(dead_code)]
 use config::Config;
 use database::Database;
-use sdl2::rect::Rect;
+use database::json_database::AnimeDatabaseData;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
+use sdl2::rect::Rect;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
 use sdl2::{
@@ -12,7 +13,9 @@ use sdl2::{
     keyboard::Keycode,
     render::{Canvas, TextureCreator},
 };
-use ui::{BACKGROUND_COLOR, color_hex, draw};
+use std::collections::BTreeMap;
+use std::rc::Rc;
+use std::time::Duration;
 use ui::FontManager;
 use ui::MostlyStatic;
 use ui::Screen;
@@ -20,9 +23,7 @@ use ui::TextManager;
 use ui::TextureManager;
 use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
-use std::collections::BTreeMap;
-use std::rc::Rc;
-use std::time::Duration;
+use ui::{color_hex, draw, BACKGROUND_COLOR};
 
 mod config;
 mod database;
@@ -39,6 +40,7 @@ pub struct App<'a, 'b> {
     pub input_util: TextInputUtil,
     pub text_manager: TextManager<'a, 'b>,
     pub image_manager: TextureManager<'a>,
+    pub thumbnail_path: String,
     pub running: bool,
 
     pub id: u32,
@@ -49,6 +51,7 @@ pub struct App<'a, 'b> {
     pub main_keyboard_override: bool,
     pub main_search_anime: Option<u32>,
     pub main_alias_anime: Option<u32>,
+    pub main_search_previous: Option<(String, Box<[*const AnimeDatabaseData]>)>,
 
     pub episode_scroll: i32,
 
@@ -71,6 +74,7 @@ impl<'a, 'b> App<'a, 'b> {
         input_util: TextInputUtil,
         ttf_ctx: &'a Sdl2TtfContext,
         texture_creator: &'a TextureCreator<WindowContext>,
+        thumbnail_path: String,
     ) -> Self {
         Self {
             canvas,
@@ -79,6 +83,7 @@ impl<'a, 'b> App<'a, 'b> {
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
             running: true,
+            thumbnail_path,
 
             id: 0,
 
@@ -88,6 +93,7 @@ impl<'a, 'b> App<'a, 'b> {
             main_keyboard_override: false,
             main_search_anime: None,
             main_alias_anime: None,
+            main_search_previous: None,
 
             episode_scroll: 0,
 
@@ -208,7 +214,13 @@ async fn main() {
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
     let texture_creator = canvas.texture_creator();
     let ttf_ctx = sdl2::ttf::init().unwrap();
-    let mut app = App::new(canvas, input_util, &ttf_ctx, &texture_creator);
+    let mut app = App::new(
+        canvas,
+        input_util,
+        &ttf_ctx,
+        &texture_creator,
+        thumbnail_path.to_string(),
+    );
 
     // TODO: Run this asynchronously and poll in draw loop
     let mut database = Database::new(database_path, video_paths).unwrap();

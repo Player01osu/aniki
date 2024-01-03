@@ -161,6 +161,61 @@ impl<'b> JsonIndexed<'b> {
     pub fn search_map(&mut self) -> &'b OptimizedMap {
         self.optimized.optimize_json_db_search(&self.json_database)
     }
+
+    pub fn fuzzy_find_anime(
+        &mut self,
+        input: &str,
+    ) -> Box<[&'b AnimeDatabaseData]> {
+        let mut chars = input.trim().chars();
+        let indexed_db: &mut JsonIndexed = unsafe { &mut *(self as *mut _) };
+        let map = indexed_db.search_map();
+        let matcher = skim_matcher();
+        let c1 = chars.next().unwrap_or('\0').to_ascii_uppercase();
+        let c2 = chars.next().unwrap_or('\0').to_ascii_uppercase();
+        let c3 = chars.next().unwrap_or('\0').to_ascii_uppercase();
+        let titles = match map.get(&(c1, c2, c3)) {
+            Some(v) => v,
+            None => return Box::new([]),
+        };
+
+
+        let mut name_heap: BinaryHeap<(Option<i64>, &&AnimeDatabaseData)> =
+        BinaryHeap::with_capacity(titles.len());
+
+        for anime in titles.iter() {
+            for title in anime
+                .synonyms()
+                .iter()
+                .map(|v| v.as_str())
+                .chain([anime.title()].into_iter())
+                {
+                    match matcher.fuzzy_match(&title, input) {
+                        Some(weight) => {
+                            name_heap.push((
+                                Some(weight - title.len().abs_diff(input.len()) as i64),
+                                anime,
+                            ));
+                        }
+                        None => {
+                            name_heap.push((None, anime));
+                        }
+                    }
+                }
+        }
+
+        let mut vec: Vec<&AnimeDatabaseData> = Vec::with_capacity(16);
+        for (_score, i) in name_heap.iter() {
+            if vec.iter().find(|v| std::ptr::eq(**i, **v)).is_none() {
+                vec.push(i);
+            }
+
+            if vec.len() >= 15 {
+                break;
+            }
+        }
+
+        vec.into()
+    }
 }
 
 fn open_json_db(_path: impl AsRef<Path>) -> AnimeDatabaseJson {
