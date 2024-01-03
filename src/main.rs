@@ -239,11 +239,7 @@ async fn main() {
 
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Q),
-                    ..
-                } => break 'running,
+                Event::Quit { .. } => break 'running,
                 Event::MouseButtonDown { .. } => {}
                 Event::MouseButtonUp {
                     mouse_btn: sdl2::mouse::MouseButton::Left,
