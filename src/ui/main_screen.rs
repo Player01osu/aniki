@@ -75,8 +75,9 @@ fn handle_main_events(
             }
         } else if app.keydown(Keycode::Return) {
             if let Some(idx) = app.main_selected {
-                let anime = animes.animes()[idx].filename().into();
-                app.set_screen(Screen::SelectEpisode(anime));
+                // Should exist
+                let anime = unsafe { animes.animes().get_unchecked(idx) };
+                app.set_screen(Screen::SelectEpisode(*anime));
             }
         }
     }
@@ -442,7 +443,6 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         }
 
         if app.mouse_clicked_left() {
-            let anime = anime.filename().into();
             app.episode_scroll = 0;
             app.main_alias_anime = None;
             app.main_search_anime = None;
