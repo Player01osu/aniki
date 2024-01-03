@@ -16,6 +16,7 @@ use sdl2::{
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Duration;
+use std::fs;
 use ui::FontManager;
 use ui::MostlyStatic;
 use ui::Screen;
@@ -179,8 +180,27 @@ impl<'a, 'b> App<'a, 'b> {
     }
 }
 
+fn lock_file() -> anyhow::Result<()> {
+    match fs::read_to_string("/tmp/aniki.lock") {
+        Ok(v) => Err(anyhow::anyhow!("Lock file exists! PID:{v}")),
+        Err(_) => {
+            fs::write("/tmp/aniki.lock", std::process::id().to_string())?;
+            Ok(())
+        }
+    }
+}
+
+fn release_lock_file() -> anyhow::Result<()> {
+    if std::path::Path::new("/tmp/aniki.lock").exists() {
+        fs::remove_file("/tmp/aniki.lock")?;
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
+    lock_file()?;
     let cfg = Config::parse_cfg();
     let database_path = cfg.database_path().to_string_lossy();
     let thumbnail_path = cfg.thumbnail_path().to_string_lossy();
@@ -300,7 +320,10 @@ async fn main() {
     // Do not write to cache while developing
     #[cfg(debug_assertions)]
     {
-        return;
+        return Ok(());
     }
     mostly_static.animes.write(cfg.database_path()).unwrap();
+
+    release_lock_file()?;
+    Ok(())
 }
