@@ -656,6 +656,7 @@ fn draw_text(
     w: Option<u32>,
     h: Option<u32>,
 ) {
+    if text.as_ref().is_empty() { return; }
     let texture = app.text_manager.load(text.as_ref(), font_info, color, w);
     let TextureQuery { width, height, .. } = texture.query();
     if let Some(height) = h {
