@@ -312,6 +312,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    release_lock_file()?;
+
     // Do not write to cache while developing
     #[cfg(debug_assertions)]
     {
@@ -319,6 +321,5 @@ async fn main() -> anyhow::Result<()> {
     }
     mostly_static.animes.write(cfg.database_path())?;
 
-    release_lock_file()?;
     Ok(())
 }
