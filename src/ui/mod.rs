@@ -1,11 +1,14 @@
-use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use sdl2::image::LoadSurface;
-use sdl2::pixels::Color;
+use crate::database;
+use crate::database::Database;
+use crate::App;
 use anyhow::Context;
 use anyhow::Result;
+use sdl2::image::LoadSurface;
+use sdl2::pixels::Color;
 use sdl2::render::Texture;
 use sdl2::render::TextureCreator;
 use sdl2::render::TextureQuery;
@@ -13,16 +16,13 @@ use sdl2::surface::Surface;
 use sdl2::ttf::Font;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::WindowContext;
-use crate::App;
-use crate::database;
-use crate::database::Database;
 
 use self::episode_screen::draw_anime_expand;
 use self::main_screen::draw_main;
 
 use sdl2::image::ImageRWops;
-use sdl2::rwops::RWops;
 use sdl2::rect::Rect;
+use sdl2::rwops::RWops;
 
 mod episode_screen;
 
@@ -84,7 +84,6 @@ macro_rules! rect(
         Rect::new($x as i32, $y as i32, $w as u32, $h as u32)
     }
 );
-
 
 #[derive(Debug, Clone)]
 pub struct Style {
@@ -643,7 +642,6 @@ fn draw_image_float(
     Ok(())
 }
 
-
 fn draw_text(
     app: &mut App,
     font_info: (&'static str, u16),
@@ -694,7 +692,6 @@ fn draw_text_centered(
 fn text_size(app: &mut App, font_info: FontInfo, text: impl AsRef<str>) -> (u32, u32) {
     app.text_manager.text_size(font_info, text.as_ref())
 }
-
 
 impl Style {
     pub fn new(fg_color: Color, bg_color: Color) -> Self {
@@ -772,24 +769,21 @@ fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
     }
 }
 
-
 fn dbg_layout(app: &mut App, layout: Layout) {
     app.canvas.set_draw_color(Color::RED);
     app.canvas.draw_rect(layout.to_rect()).unwrap();
 }
 
-
-pub fn draw(app: &mut App, mostly_static: &mut MostlyStatic) {
+pub fn draw<'frame>(app: &mut App, mostly_static: &mut MostlyStatic) {
     match app.screen {
         Screen::Main => draw_main(app, mostly_static),
         Screen::SelectEpisode(ref filename) => {
             // Anime reference will never get changed while drawing frame
-            let anime: &database::Anime = unsafe {
+            let anime: &'frame database::Anime = unsafe {
                 let ptr = mostly_static.animes.get_anime(filename).unwrap();
-                std::mem::transmute(ptr)
+                &*(ptr as *const _)
             };
             draw_anime_expand(app, mostly_static, anime);
         }
     }
 }
-

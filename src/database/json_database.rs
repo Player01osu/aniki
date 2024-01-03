@@ -256,12 +256,12 @@ impl<'a> OptimizedDatabase<'a> {
         }
     }
 
-    fn optimize_json_db(&mut self, json_database: &AnimeDatabaseJson) -> &OptimizedMap {
+    fn optimize_json_db(&mut self, json_database: &'a AnimeDatabaseJson) -> &'a OptimizedMap {
         // `OptimizedMap` has references to `json_database`, but this is only used in the context
         // of `JsonIndexed` which has an owned _immutable_ reference to `json_database`.
         //
-        // Using an unsafe transmute here gets around lifetime restrictions.
-        let json_database: &AnimeDatabaseJson = unsafe { std::mem::transmute(json_database) };
+        // Using an unsafe ptr cast here gets around borrowing restrictions.
+        let json_database: &'a AnimeDatabaseJson = unsafe { &*(json_database as *const _) };
         self.map.get_or_insert_with(|| {
             let mut map = BTreeMap::<OptimizedKey, OptimizedValue>::new();
 
@@ -277,10 +277,10 @@ impl<'a> OptimizedDatabase<'a> {
 
     fn optimize_json_db_search(
         &mut self,
-        json_database: &AnimeDatabaseJson,
-    ) -> &BTreeMap<OptimizedKey, OptimizedValue> {
+        json_database: &'a AnimeDatabaseJson,
+    ) -> &'a OptimizedMap {
         // See comments about unsafe use in `optimized_json_db`.
-        let json_database: &AnimeDatabaseJson = unsafe { std::mem::transmute(json_database) };
+        let json_database: &'a AnimeDatabaseJson = unsafe { &*(json_database as *const _) };
         self.search_map.get_or_insert_with(|| {
             let mut map = BTreeMap::<OptimizedKey, OptimizedValue>::new();
 

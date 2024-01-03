@@ -111,7 +111,7 @@ fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
     app.canvas.fill_rect(rect!(x + text_width as i32, y + pad_height, 1, height - (pad_height as u32 * 2))).unwrap();
 
     if !app.text_input.is_empty() {
-        let input: &str = unsafe { std::mem::transmute(app.text_input.as_str()) };
+        let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
         draw_text(app, font_info, input, color_hex(0x909090), x, y, None, None);
     }
 }

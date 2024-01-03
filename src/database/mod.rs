@@ -456,12 +456,12 @@ impl<'a> Database<'a> {
                         // does not invalidate any references.
                         //
                         // Unsafe used to get around lifetime restrictions.
-                        let indexed_db = self.indexed_db
-                            .get_or_insert_with(JsonIndexed::new);
-                        let indexed_json: &mut JsonIndexed =
-                            unsafe { std::mem::transmute(indexed_db) };
+                        let indexed_db = self.indexed_db.get_or_insert_with(JsonIndexed::new);
+                        let indexed_json: &'a mut JsonIndexed =
+                            unsafe { &mut *(indexed_db as *mut _) };
                         let map = indexed_json.map();
-                        let metadata = self.indexed_db
+                        let metadata = self
+                            .indexed_db
                             .get_or_insert_with(JsonIndexed::new)
                             .match_name(map, sanitized_name.trim());
                         v.insert(Anime::from_path(path, name, metadata.cloned(), time));
@@ -502,8 +502,8 @@ impl<'a> Database<'a> {
         //
         // Doing this will not cause invariances unless `anime_map` is
         // mutated (such as inserting or removing), *so don't do that*.
-        let anime_map: &mut BTreeMap<Box<str>, Anime> =
-            unsafe { std::mem::transmute(&mut self.anime_map) };
+        let anime_map: &'a mut BTreeMap<Box<str>, Anime> =
+            unsafe { &mut *(&mut self.anime_map as *mut _) };
         self.cached_view.last_updated = get_time();
         self.cached_view.animes = anime_map
             .values_mut()
@@ -522,7 +522,7 @@ impl<'a> Database<'a> {
         Ok(())
     }
 
-    pub fn animes(&mut self) -> &mut [&mut Anime] {
+    pub fn animes<'frame>(&mut self) -> &'frame mut [&'frame mut Anime] {
         if self
             .cached_view
             .animes
