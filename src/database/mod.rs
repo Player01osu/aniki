@@ -25,7 +25,9 @@ pub struct Anime {
     last_updated: u64,
     current_episode: Episode,
     episodes: EpisodeMap,
+
     thumbnail: Option<String>,
+    alias: Option<String>,
 
     // From JSON Database
     metadata: Option<AnimeDatabaseData>,
@@ -139,6 +141,7 @@ impl Anime {
             current_episode: Episode::from((1, 1)),
             episodes: Vec::new(),
             thumbnail: None,
+            alias: None,
             metadata,
         };
         anime.update_episodes();
@@ -162,6 +165,17 @@ impl Anime {
             .as_ref()
             .map(|m| m.title())
             .unwrap_or(&self.filename)
+    }
+
+    pub fn display_title(&self) -> &str {
+        self.alias
+            .as_ref()
+            .map(String::as_str)
+            .unwrap_or_else(|| self.title())
+    }
+
+    pub fn set_alias(&mut self, s: String) {
+        self.alias = Some(s);
     }
 
     pub fn len(&self) -> usize {
@@ -398,6 +412,7 @@ impl<'a> Database<'a> {
                     cached_view: CachedView::default(),
                 };
                 db.update(anime_directories);
+                db.update_cached();
                 Ok(db)
             }
         }
@@ -466,7 +481,9 @@ impl<'a> Database<'a> {
         let mut sanitized_name = String::with_capacity(64);
 
         for directory in anime_directories {
-            self.update_directory(directory, time, &mut sanitized_name);
+            if Path::new(directory.as_ref()).exists() {
+                self.update_directory(directory, time, &mut sanitized_name);
+            }
         }
     }
 
