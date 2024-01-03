@@ -1,8 +1,7 @@
 
 # Aniki
 
-##### Warning: This is unfinished software! Don't expect everything to be
-##### there, but I appreciate any feedback and bug reports.
+##### Warning: This is unfinished software! Don't expect everything to be there, but I appreciate any feedback and bug reports.
 
 Watch and keep track of anime.
 
