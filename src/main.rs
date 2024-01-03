@@ -35,12 +35,42 @@ const MOUSE_CLICK_RIGHT: u8 = 0x00000002;
 const MOUSE_MOVED: u8 = 0x00000004;
 const RESIZED: u8 = 0x00000008;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub enum Format {
+    Truncate,
+}
+
+pub struct StringManager {
+    map: Vec<(*const u8, Format, Rc<str>)>,
+}
+
+impl StringManager {
+    pub fn new() -> Self {
+        Self { map: vec![] }
+    }
+
+    pub fn load(&mut self, ptr: *const u8, format: Format, f: impl FnOnce() -> String) -> Rc<str> {
+        match self.map.iter().find(|(ptr_a, format_a, _)| *ptr_a == ptr && *format_a == format) {
+            Some((_, _, s)) => {
+                let s = Rc::clone(s);
+                s
+            },
+            None => {
+                let s = f().into();
+                self.map.push((ptr, format, Rc::clone(&s)));
+                s
+            },
+        }
+    }
+}
+
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
     pub screen: Screen,
     pub input_util: TextInputUtil,
     pub text_manager: TextManager<'a, 'b>,
     pub image_manager: TextureManager<'a>,
+    pub string_manager: StringManager,
     pub thumbnail_path: String,
     pub running: bool,
 
@@ -84,6 +114,8 @@ impl<'a, 'b> App<'a, 'b> {
             screen: Screen::Main,
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
+            string_manager: StringManager::new(),
+
             running: true,
             thumbnail_path,
 

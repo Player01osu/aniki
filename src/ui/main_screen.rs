@@ -4,6 +4,7 @@ use sdl2::{
     url::open_url,
 };
 
+use crate::Format;
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
     database::{self, Database},
@@ -586,16 +587,27 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     }
 
     // draw title background
-    let title = anime.display_title();
-    let title = if text_width > layout.width - 35 {
-        //title.split_at(15).0
-        format!("{}...", title.split_at(15).0)
-    } else {
-        //title
-        title.to_string()
-    };
     app.canvas.set_draw_color(card_bg_color);
     app.canvas.fill_rect(text_layout.to_rect()).unwrap();
+
+    let f = {
+        let app = unsafe { &mut *(app as *mut _) };
+        || {
+            if text_width > layout.width - 35 {
+                let mut title = anime.display_title().to_string();
+
+                while text_size(app, TITLE_FONT_INFO, format!("{title}...")).0 > layout.width - 35 {
+                    title.pop();
+                }
+
+                format!("{title}...")
+            } else {
+                anime.display_title().to_string()
+            }
+        }
+    };
+
+    let title = app.string_manager.load(anime.display_title().as_ptr(), Format::Truncate, f);
 
     // draw title
     app.canvas.set_draw_color(card_fg_color);
