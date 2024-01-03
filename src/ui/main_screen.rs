@@ -454,6 +454,7 @@ fn draw_card_extra_menu(
         change_title_layout,
     ) {
         clicked = true;
+        app.text_input.clear();
         app.main_search_anime = Some(idx as u32);
     }
 
