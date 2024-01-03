@@ -17,7 +17,10 @@ use sdl2::ttf::Font;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::WindowContext;
 
+use self::episode_screen::DESCRIPTION_FONT_INFO;
 use self::episode_screen::draw_anime_expand;
+use self::main_screen::CARD_HEIGHT;
+use self::main_screen::CARD_WIDTH;
 use self::main_screen::draw_main;
 
 use sdl2::image::ImageRWops;
@@ -50,6 +53,8 @@ pub const TITLE_FONT: &str = LIBERATION_FONT;
 pub const TITLE_FONT_PT: u16 = 16;
 pub const TITLE_FONT_INFO: (&str, u16) = (TITLE_FONT, TITLE_FONT_PT);
 pub const TITLE_FONT_COLOR: u32 = 0xABABAB;
+
+pub const THUMBNAIL_MISSING_SIZE: (u32, u32) = (CARD_WIDTH, CARD_HEIGHT);
 
 //const PLAY_BUTTON_FONT: &'static str = r"./fonts/OpenSans/OpenSans-VariableFont_wdth,wght.ttf";
 const PLAY_BUTTON_FONT: &str = LIBERATION_FONT;
@@ -773,6 +778,21 @@ fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
     if draw_button(app, "Back", style, layout) {
         app.set_screen(screen.clone());
     }
+}
+
+pub fn draw_missing_thumbnail(app: &mut App, layout: Layout) {
+    app.canvas.set_draw_color(color_hex(0x9A9A9A));
+    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    draw_text_centered(
+        app,
+        DESCRIPTION_FONT_INFO,
+        "No Thumbnail :<",
+        color_hex(0x303030),
+        layout.x + layout.width as i32 / 2,
+        layout.y + layout.height as i32 / 2,
+        None,
+        None,
+    );
 }
 
 fn dbg_layout(app: &mut App, layout: Layout) {

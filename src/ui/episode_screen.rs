@@ -16,7 +16,7 @@ use crate::{
 use super::{
     draw_text_centered, Layout, MostlyStatic, Screen,
     SCROLLBAR_COLOR, TITLE_FONT_COLOR,
-    draw_back_button, TITLE_FONT, draw_image_float, H2_FONT_INFO, H1_FONT_INFO, PLAY_ICON,
+    draw_back_button, TITLE_FONT, draw_image_float, H2_FONT_INFO, H1_FONT_INFO, PLAY_ICON, THUMBNAIL_MISSING_SIZE, draw_missing_thumbnail,
 };
 
 pub const DESCRIPTION_X_PAD_OUTER: i32 = 10;
@@ -144,19 +144,7 @@ fn draw_top_panel_with_metadata(
     metadata: &AnimeDatabaseData,
 ) {
     let (_, font_height) = app.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
-    let description_layout = match anime.thumbnail() {
-        Some(thumbnail) => {
-            if let Ok((image_width, image_height)) = app.image_manager.query_size(thumbnail) {
-                let (image_layout, description_layout) =
-                    layout.split_vert(image_width * layout.height / image_height, layout.width);
-                let _ = draw_image_float(app, thumbnail, image_layout, None);
-                description_layout.pad_outer(10, 10)
-            } else {
-                layout
-            }
-        }
-        None => layout,
-    };
+    let description_layout = layout;
     let (title_layout, description_layout) = description_layout.split_hori(2, 7);
     let (title_layout, description_header_layout) = title_layout.split_hori(1, 2);
     let (description_layout, directory_name_layout) = description_layout.split_hori(
@@ -208,9 +196,33 @@ fn draw_top_panel_with_metadata(
 }
 
 fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Layout) {
+    let description_layout = match anime.thumbnail() {
+        Some(thumbnail) => {
+            if let Ok((image_width, image_height)) = app.image_manager.query_size(thumbnail) {
+                let (image_layout, description_layout) =
+                    layout.split_vert(image_width * layout.height / image_height, layout.width);
+                let _ = draw_image_float(app, thumbnail, image_layout, None);
+                description_layout.pad_outer(10, 10)
+            } else {
+                let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
+                let (image_layout, description_layout) =
+                layout.split_vert(image_width * layout.height / image_height, layout.width);
+                draw_missing_thumbnail(app, image_layout);
+                description_layout.pad_outer(10, 10)
+            }
+        }
+        None => {
+            let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
+            let (image_layout, description_layout) =
+            layout.split_vert(image_width * layout.height / image_height, layout.width);
+            draw_missing_thumbnail(app, image_layout);
+            description_layout.pad_outer(10, 10)
+        },
+    };
+
     match anime.metadata() {
-        Some(m) => draw_top_panel_with_metadata(app, anime, layout, m),
-        None => {}
+        Some(m) => draw_top_panel_with_metadata(app, anime, description_layout, m),
+        None => {},
     }
 }
 

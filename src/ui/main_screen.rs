@@ -12,15 +12,14 @@ use crate::{
     App,
 };
 
-use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_text_centered, text_size, Layout,
     MostlyStatic, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR,
-    TITLE_FONT_INFO,
+    TITLE_FONT_INFO, draw_missing_thumbnail,
 };
 
-const CARD_WIDTH: u32 = 200;
-const CARD_HEIGHT: u32 = 300;
+pub const CARD_WIDTH: u32 = 200;
+pub const CARD_HEIGHT: u32 = 300;
 const CARD_X_PAD_OUTER: i32 = 10;
 const CARD_Y_PAD_OUTER: i32 = 10;
 const CARD_X_PAD_INNER: i32 = 20;
@@ -419,18 +418,7 @@ fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
             return;
         }
     }
-    app.canvas.set_draw_color(color_hex(0x9A9A9A));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
-    draw_text_centered(
-        app,
-        DESCRIPTION_FONT_INFO,
-        "No Thumbnail :<",
-        color_hex(0x303030),
-        layout.x + layout.width as i32 / 2,
-        layout.y + layout.height as i32 / 2,
-        None,
-        None,
-    );
+    draw_missing_thumbnail(app, layout);
 }
 
 fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
