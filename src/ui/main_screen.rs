@@ -169,7 +169,7 @@ fn draw_main_anime_search(
         }
     };
     let (search_layout, option_layout) = layout.split_hori(text_height + 20, layout.height);
-    let option_layouts = option_layout.split_even_hori(text_height + 20, options.len());
+    let option_layouts = option_layout.split_even_hori(text_height + 20);
 
     app.canvas.set_draw_color(color_hex(0x303030));
     app.canvas.fill_rect(layout.to_rect()).unwrap();
@@ -234,7 +234,7 @@ fn draw_main_anime_alias(
     };
     let height = option_layout.height - 5;
     let (_, option_layout) = option_layout.split_hori(option_layout.height - height, height);
-    let option_layouts = option_layout.split_even_hori(text_height + 20, options.len());
+    let option_layouts = option_layout.split_even_hori(text_height + 20);
 
     app.canvas.set_draw_color(color_hex(0x303030));
     app.canvas.fill_rect(layout.to_rect()).unwrap();

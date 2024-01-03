@@ -41,7 +41,9 @@ fn draw_episode_list(
     let (layout, scrollbar_layout) = layout.split_vert(796, 800);
     let layouts = layout
         .scroll_y(app.episode_scroll)
-        .split_even_hori(episode_height, episode_count);
+        .split_even_hori(episode_height)
+        .take(anime.len())
+        .collect::<Box<[Layout]>>();
 
     if app.keydown(Keycode::J) {
         if let Some(last) = layouts.last() {
@@ -50,7 +52,7 @@ fn draw_episode_list(
             }
         }
     } else if app.keydown(Keycode::K) {
-        if let Some(first) = layouts.first() {
+        if let Some(first) = layouts.into_iter().next() {
             if first.y < layout.y {
                 app.episode_scroll += 40;
             }

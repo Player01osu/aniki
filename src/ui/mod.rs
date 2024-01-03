@@ -483,15 +483,14 @@ impl Layout {
     //
     // Plus, this function does not respect height bounds, which should
     // be taken care of with `set_clip_rect` anyways.
-    pub fn split_even_hori(self, height: u32, n: usize) -> Vec<Self> {
-        (0..n)
-            .map(|idx| Self {
+    pub fn split_even_hori(self, height: u32) -> impl Iterator<Item = Layout> {
+        (0..)
+            .map(move |idx| Self {
                 x: self.x,
                 y: self.y + height as i32 * idx as i32,
                 width: self.width,
                 height,
             })
-            .collect()
     }
 
     pub fn overlay_vert(self, top: u32, ratio: u32) -> (Self, Self) {
