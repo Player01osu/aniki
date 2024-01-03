@@ -8,6 +8,7 @@ Watch and keep track of anime.
 ## Features
 
 - [X] Media detection
+
 - [X] Keep track of last anime watched and last episode watched
 <details> <summary></summary>
 <video src="https://github.com/Player01osu/aniki/assets/85573610/2674337a-007c-4561-9fe7-0bdf0beb812b">
