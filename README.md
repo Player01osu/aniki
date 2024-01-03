@@ -25,19 +25,21 @@ alias titles
 - [X] Choose thumbnails
 <details> <summary></summary>
 <video src="https://github.com/Player01osu/aniki/assets/85573610/e5585a5e-0b90-4ef9-a607-859391f83e8c">
-alias titles
+thumbnail
 </video>
 </details>
 
 - [X] Change anime (in case of incorrect detection)
 <details> <summary></summary>
 <video src="https://github.com/Player01osu/aniki/assets/85573610/6af020b4-5e06-44cd-bffe-5c7679f47f05">
-alias titles
+change anime
 </video>
 </details>
 
 - [ ] Get synopsis from anilist/mal
+
 - [ ] Sync with anilist/mal
+
 - [ ] Custom styling
 
 ## Quickstart
