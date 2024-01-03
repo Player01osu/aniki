@@ -477,12 +477,6 @@ impl Layout {
         (left_layout, right_layout)
     }
 
-    // TODO: This should honestly just return an infinite iterator since
-    // anything that uses this will be zipped, so will end before end
-    // anyways.
-    //
-    // Plus, this function does not respect height bounds, which should
-    // be taken care of with `set_clip_rect` anyways.
     pub fn split_even_hori(self, height: u32) -> impl Iterator<Item = Layout> {
         (0..)
             .map(move |idx| Self {
