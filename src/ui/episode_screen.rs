@@ -166,7 +166,7 @@ fn draw_top_panel_with_metadata(
     draw_text(
         app,
         H1_FONT_INFO,
-        metadata.title(),
+        anime.display_title(),
         color_hex(DESCRIPTION_FONT_COLOR),
         title_layout.x,
         title_layout.y,
