@@ -524,7 +524,7 @@ impl Layout {
         Self {
             x: self.x,
             y: self.y,
-            width: (self.width as i32 - pad) as u32,
+            width: (self.width as i32 - pad * 2) as u32,
             height: self.height,
         }
     }

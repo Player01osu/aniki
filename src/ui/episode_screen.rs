@@ -133,7 +133,7 @@ pub fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, anime:
     let (back_button_layout, _) = top_left_layout.split_hori(10, 11);
 
     draw_top_panel_anime_expand(app, anime, top_description_layout);
-    draw_back_button(app, Screen::Main, back_button_layout.pad_right(10));
+    draw_back_button(app, Screen::Main, back_button_layout.pad_right(5));
     draw_episode_list(app, mostly_static, anime, bottom_description_layout);
 }
 
