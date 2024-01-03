@@ -77,6 +77,9 @@ impl Config {
             }
             _ => return Self::default_config(&env_vars),
         };
+        #[cfg(debug_assertions)]
+        let database_path = PathBuf::from("./aniki.db");
+
         Self::parse(config_path, thumbnail_path, database_path, video_paths)
     }
 
