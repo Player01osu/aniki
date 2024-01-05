@@ -1,5 +1,8 @@
-use std::{str::Chars, path::{PathBuf, Path}};
 use anyhow::Result;
+use std::{
+    path::{Path, PathBuf},
+    str::Chars,
+};
 
 use super::Config;
 
@@ -93,7 +96,8 @@ pub(super) fn next_node(lexer: &mut ConfigLexer<'_>) -> Result<Option<Node>> {
             let path = next_path(lexer)?;
 
             let next_token = lexer.next_token();
-            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::Eof))?;
+            expect_token(&next_token, TokenKind::Newline)
+                .or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::ThumbnailPath(path)))
         }
         TokenKind::DatabasePath => {
@@ -101,7 +105,8 @@ pub(super) fn next_node(lexer: &mut ConfigLexer<'_>) -> Result<Option<Node>> {
             let path = next_path(lexer)?;
 
             let next_token = lexer.next_token();
-            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::Eof))?;
+            expect_token(&next_token, TokenKind::Newline)
+                .or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::DatabasePath(path)))
         }
         TokenKind::VideoPaths => {
@@ -114,7 +119,8 @@ pub(super) fn next_node(lexer: &mut ConfigLexer<'_>) -> Result<Option<Node>> {
             };
 
             let next_token = lexer.next_token();
-            expect_token(&next_token, TokenKind::Newline).or(expect_token(&next_token, TokenKind::Eof))?;
+            expect_token(&next_token, TokenKind::Newline)
+                .or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::VideoPaths(paths)))
         }
         TokenKind::Eof => Ok(None),
@@ -271,7 +277,14 @@ fn parser_test_0() {
     let _thumbnail_path = base_dir_path.join("thumbnails");
     let video_paths = vec![];
 
-    assert_eq!(cfg, Config { thumbnail_path: PathBuf::from(path), database_path, video_paths });
+    assert_eq!(
+        cfg,
+        Config {
+            thumbnail_path: PathBuf::from(path),
+            database_path,
+            video_paths
+        }
+    );
 }
 
 #[test]
@@ -290,7 +303,14 @@ fn parser_test_1() {
     let thumbnail_path = base_dir_path.join("thumbnails");
     let video_paths = vec![];
 
-    assert_eq!(cfg, Config { thumbnail_path, database_path: PathBuf::from(path), video_paths });
+    assert_eq!(
+        cfg,
+        Config {
+            thumbnail_path,
+            database_path: PathBuf::from(path),
+            video_paths
+        }
+    );
 }
 
 #[test]
@@ -310,5 +330,12 @@ fn parser_test_2() {
     let thumbnail_path = base_dir_path.join("thumbnails");
     let video_paths = vec![PathBuf::from(path), PathBuf::from(path_1)];
 
-    assert_eq!(cfg, Config { thumbnail_path, database_path, video_paths });
+    assert_eq!(
+        cfg,
+        Config {
+            thumbnail_path,
+            database_path,
+            video_paths
+        }
+    );
 }

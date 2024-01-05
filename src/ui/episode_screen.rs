@@ -1,8 +1,5 @@
 use sdl2::rect::Rect;
-use sdl2::{
-    keyboard::Keycode,
-    url::open_url,
-};
+use sdl2::{keyboard::Keycode, url::open_url};
 
 use crate::database;
 use crate::database::episode::Episode;
@@ -14,9 +11,9 @@ use crate::{
 };
 
 use super::{
-    draw_text_centered, Layout, MostlyStatic, Screen,
-    SCROLLBAR_COLOR, TITLE_FONT_COLOR,
-    draw_back_button, TITLE_FONT, draw_image_float, H2_FONT_INFO, H1_FONT_INFO, PLAY_ICON, THUMBNAIL_MISSING_SIZE, draw_missing_thumbnail,
+    draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered, Layout,
+    MostlyStatic, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
+    THUMBNAIL_MISSING_SIZE, TITLE_FONT, TITLE_FONT_COLOR,
 };
 
 pub const DESCRIPTION_X_PAD_OUTER: i32 = 10;
@@ -154,7 +151,8 @@ fn draw_top_panel_with_metadata(
         description_layout.height,
     );
     draw_text(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         H1_FONT_INFO,
         anime.display_title(),
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -164,7 +162,8 @@ fn draw_top_panel_with_metadata(
         Some(title_layout.height),
     );
     draw_text(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         H2_FONT_INFO,
         "Description",
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -174,7 +173,8 @@ fn draw_top_panel_with_metadata(
         Some(description_header_layout.height),
     );
     draw_text(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         DESCRIPTION_FONT_INFO,
         metadata.tags().join(", "),
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -185,7 +185,8 @@ fn draw_top_panel_with_metadata(
     );
     app.canvas.set_clip_rect(directory_name_layout.to_rect());
     draw_text_centered(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         DIRECTORY_NAME_FONT_INFO,
         anime.filename(),
         color_hex(DIRECTORY_NAME_FONT_COLOR),
@@ -208,7 +209,7 @@ fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: L
             } else {
                 let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
                 let (image_layout, description_layout) =
-                layout.split_vert(image_width * layout.height / image_height, layout.width);
+                    layout.split_vert(image_width * layout.height / image_height, layout.width);
                 draw_missing_thumbnail(app, image_layout);
                 description_layout.pad_outer(10, 10)
             }
@@ -216,15 +217,15 @@ fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: L
         None => {
             let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
             let (image_layout, description_layout) =
-            layout.split_vert(image_width * layout.height / image_height, layout.width);
+                layout.split_vert(image_width * layout.height / image_height, layout.width);
             draw_missing_thumbnail(app, image_layout);
             description_layout.pad_outer(10, 10)
-        },
+        }
     };
 
     match anime.metadata() {
         Some(m) => draw_top_panel_with_metadata(app, anime, description_layout, m),
-        None => {},
+        None => {}
     }
 }
 
@@ -261,7 +262,8 @@ fn draw_episode(
     }
     let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)));
     draw_text(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         BACK_BUTTON_FONT_INFO,
         text,
         color_hex(DESCRIPTION_FONT_COLOR),

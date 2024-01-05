@@ -104,7 +104,7 @@ fn consume_space(s: &mut Chars, buf: &mut String) {
 pub fn sanitize_name(s: &mut Chars, buf: &mut String) {
     let c = match s.next() {
         Some(c) => c,
-        None => return ,
+        None => return,
     };
 
     match c {

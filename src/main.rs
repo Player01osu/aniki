@@ -41,7 +41,7 @@ pub enum Format {
 }
 
 pub struct StringManager {
-    map: Vec<(*const u8, Format, Rc<str>)>,
+    map: Vec<(*const u8, Format, String)>,
 }
 
 impl StringManager {
@@ -49,17 +49,20 @@ impl StringManager {
         Self { map: vec![] }
     }
 
-    pub fn load(&mut self, ptr: *const u8, format: Format, f: impl FnOnce() -> String) -> Rc<str> {
-        match self.map.iter().find(|(ptr_a, format_a, _)| *ptr_a == ptr && *format_a == format) {
+    pub fn load(&mut self, ptr: *const u8, format: Format, f: impl FnOnce() -> String) -> &str {
+        match self
+            .map
+            .iter()
+            .find(|(ptr_a, format_a, _)| *ptr_a == ptr && *format_a == format)
+        {
             Some((_, _, s)) => {
-                let s = Rc::clone(s);
-                s
-            },
+                    unsafe { &*(s.as_str() as *const _) }
+            }
             None => {
-                let s = f().into();
-                self.map.push((ptr, format, Rc::clone(&s)));
-                s
-            },
+                let s = f();
+                self.map.push((ptr, format, s));
+                unsafe { &*(self.map[self.map.len() - 1].2.as_str() as *const _) }
+            }
         }
     }
 }

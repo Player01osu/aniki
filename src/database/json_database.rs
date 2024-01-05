@@ -162,10 +162,7 @@ impl<'b> JsonIndexed<'b> {
         self.optimized.optimize_json_db_search(&self.json_database)
     }
 
-    pub fn fuzzy_find_anime(
-        &mut self,
-        input: &str,
-    ) -> Box<[&'b AnimeDatabaseData]> {
+    pub fn fuzzy_find_anime(&mut self, input: &str) -> Box<[&'b AnimeDatabaseData]> {
         let mut chars = input.trim().chars();
         let indexed_db: &mut JsonIndexed = unsafe { &mut *(self as *mut _) };
         let map = indexed_db.search_map();
@@ -178,9 +175,8 @@ impl<'b> JsonIndexed<'b> {
             None => return Box::new([]),
         };
 
-
         let mut name_heap: BinaryHeap<(Option<i64>, &&AnimeDatabaseData)> =
-        BinaryHeap::with_capacity(titles.len());
+            BinaryHeap::with_capacity(titles.len());
 
         for anime in titles.iter() {
             for title in anime
@@ -188,19 +184,19 @@ impl<'b> JsonIndexed<'b> {
                 .iter()
                 .map(|v| v.as_str())
                 .chain([anime.title()].into_iter())
-                {
-                    match matcher.fuzzy_match(&title, input) {
-                        Some(weight) => {
-                            name_heap.push((
-                                Some(weight - title.len().abs_diff(input.len()) as i64),
-                                anime,
-                            ));
-                        }
-                        None => {
-                            name_heap.push((None, anime));
-                        }
+            {
+                match matcher.fuzzy_match(&title, input) {
+                    Some(weight) => {
+                        name_heap.push((
+                            Some(weight - title.len().abs_diff(input.len()) as i64),
+                            anime,
+                        ));
+                    }
+                    None => {
+                        name_heap.push((None, anime));
                     }
                 }
+            }
         }
 
         let mut vec: Vec<&AnimeDatabaseData> = Vec::with_capacity(16);

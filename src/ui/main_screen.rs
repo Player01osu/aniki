@@ -4,7 +4,6 @@ use sdl2::{
     url::open_url,
 };
 
-use crate::Format;
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
     database::{self, Database},
@@ -12,11 +11,12 @@ use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
+use crate::Format;
 
 use super::{
-    color_hex_a, draw_button, draw_image_clip, draw_text_centered, text_size, Layout,
-    MostlyStatic, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR,
-    TITLE_FONT_INFO, draw_missing_thumbnail,
+    color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered,
+    text_size, Layout, MostlyStatic, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
+    TITLE_FONT_COLOR, TITLE_FONT_INFO,
 };
 
 pub const CARD_WIDTH: u32 = 200;
@@ -131,7 +131,8 @@ fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
         let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
         app.canvas.set_clip_rect(layout.to_rect());
         draw_text(
-            app,
+            &mut app.canvas,
+            &mut app.text_manager,
             font_info,
             input,
             color_hex(0x909090),
@@ -286,7 +287,8 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
         let layout = layout.pad_left(side_pad as i32).pad_right(side_pad as i32);
         app.canvas.set_clip_rect(layout.to_rect());
         draw_text(
-            app,
+            &mut app.canvas,
+            &mut app.text_manager,
             font_info,
             option,
             color_hex(0xa0a0a0),
@@ -298,7 +300,8 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
         app.canvas.set_clip_rect(None);
     } else {
         draw_text_centered(
-            app,
+            &mut app.canvas,
+            &mut app.text_manager,
             font_info,
             option,
             color_hex(0xa0a0a0),
@@ -549,7 +552,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     let card_fg_color = color_hex(TITLE_FONT_COLOR);
     let (text_width, text_height) = {
         let title = anime.display_title();
-        text_size(app, TITLE_FONT_INFO, title)
+        text_size(&mut app.text_manager, TITLE_FONT_INFO, title)
     };
     let (top_layout, text_layout) = layout.split_hori(layout.height - text_height, layout.height);
     let image_layout = layout;
@@ -591,12 +594,17 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     app.canvas.fill_rect(text_layout.to_rect()).unwrap();
 
     let f = {
-        let app = unsafe { &mut *(app as *mut _) };
         || {
             if text_width > layout.width - 35 {
                 let mut title = anime.display_title().to_string();
 
-                while text_size(app, TITLE_FONT_INFO, format!("{title}...")).0 > layout.width - 35 {
+                while text_size(
+                    &mut app.text_manager,
+                    TITLE_FONT_INFO,
+                    format!("{title}..."),
+                )
+                .0 > layout.width - 35
+                {
                     title.pop();
                 }
 
@@ -607,13 +615,15 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         }
     };
 
-    let title = app.string_manager.load(anime.display_title().as_ptr(), Format::Truncate, f);
+    let string_manager = &mut app.string_manager;
+    let title = string_manager.load(anime.display_title().as_ptr(), Format::Truncate, f);
 
     // draw title
     app.canvas.set_draw_color(card_fg_color);
     app.canvas.draw_rect(text_layout.to_rect()).unwrap();
     draw_text_centered(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         TITLE_FONT_INFO,
         title,
         card_fg_color,

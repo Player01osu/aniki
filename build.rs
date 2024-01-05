@@ -7,7 +7,10 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let path = std::path::Path::new(&out_dir).join(JSON_DATABASE_PATH);
     if !path.exists() {
-        let data = reqwest::blocking::get(JSON_DATABASE_UPSTREAM).unwrap().bytes().unwrap();
+        let data = reqwest::blocking::get(JSON_DATABASE_UPSTREAM)
+            .unwrap()
+            .bytes()
+            .unwrap();
         std::fs::write(&path, data).unwrap();
     }
 

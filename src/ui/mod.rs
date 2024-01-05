@@ -9,19 +9,21 @@ use anyhow::Context;
 use anyhow::Result;
 use sdl2::image::LoadSurface;
 use sdl2::pixels::Color;
+use sdl2::render::Canvas;
 use sdl2::render::Texture;
 use sdl2::render::TextureCreator;
 use sdl2::render::TextureQuery;
 use sdl2::surface::Surface;
 use sdl2::ttf::Font;
 use sdl2::ttf::Sdl2TtfContext;
+use sdl2::video::Window;
 use sdl2::video::WindowContext;
 
-use self::episode_screen::DESCRIPTION_FONT_INFO;
 use self::episode_screen::draw_anime_expand;
+use self::episode_screen::DESCRIPTION_FONT_INFO;
+use self::main_screen::draw_main;
 use self::main_screen::CARD_HEIGHT;
 use self::main_screen::CARD_WIDTH;
-use self::main_screen::draw_main;
 
 use sdl2::image::ImageRWops;
 use sdl2::rect::Rect;
@@ -36,7 +38,7 @@ const DEBUG_COLOR: u32 = 0xFF0000;
 pub const WINDOW_WIDTH: u32 = 1280;
 pub const WINDOW_HEIGHT: u32 = 720;
 
-pub const BACKGROUND_COLOR: u32 = 0x1B1B1B;
+pub const BACKGROUND_COLOR: u32 = 0x1A1B25;
 
 const LIBERATION_FONT_BYTES: &[u8] =
     include_bytes!(r"../../fonts/liberation-fonts-ttf-2.1.5/LiberationSans-Regular.ttf");
@@ -478,13 +480,12 @@ impl Layout {
     }
 
     pub fn split_even_hori(self, height: u32) -> impl Iterator<Item = Layout> {
-        (0..)
-            .map(move |idx| Self {
-                x: self.x,
-                y: self.y + height as i32 * idx as i32,
-                width: self.width,
-                height,
-            })
+        (0..).map(move |idx| Self {
+            x: self.x,
+            y: self.y + height as i32 * idx as i32,
+            width: self.width,
+            height,
+        })
     }
 
     pub fn overlay_vert(self, top: u32, ratio: u32) -> (Self, Self) {
@@ -647,7 +648,8 @@ fn draw_image_float(
 }
 
 fn draw_text(
-    app: &mut App,
+    canvas: &mut Canvas<Window>,
+    text_manager: &mut TextManager,
     font_info: (&'static str, u16),
     text: impl AsRef<str>,
     color: Color,
@@ -656,23 +658,26 @@ fn draw_text(
     w: Option<u32>,
     h: Option<u32>,
 ) {
-    if text.as_ref().is_empty() { return; }
-    let texture = app.text_manager.load(text.as_ref(), font_info, color, w);
+    if text.as_ref().is_empty() {
+        return;
+    }
+    let texture = text_manager.load(text.as_ref(), font_info, color, w);
     let TextureQuery { width, height, .. } = texture.query();
     if let Some(height) = h {
-        let clip_rect = app.canvas.clip_rect().unwrap_or(rect!(x, y, width, height));
-        app.canvas.set_clip_rect(clip_rect);
+        let clip_rect = canvas.clip_rect().unwrap_or(rect!(x, y, width, height));
+        canvas.set_clip_rect(clip_rect);
     }
-    app.canvas
+    canvas
         .copy(&texture, None, Some(rect!(x, y, width, height)))
         .unwrap();
     if h.is_some() {
-        app.canvas.set_clip_rect(None)
+        canvas.set_clip_rect(None)
     };
 }
 
 fn draw_text_centered(
-    app: &mut App,
+    canvas: &mut Canvas<Window>,
+    text_manager: &mut TextManager,
     font_info: FontInfo,
     text: impl AsRef<str>,
     color: Color,
@@ -681,9 +686,10 @@ fn draw_text_centered(
     w: Option<u32>,
     h: Option<u32>,
 ) {
-    let (text_width, text_height) = text_size(app, font_info, text.as_ref());
+    let (text_width, text_height) = text_size(text_manager, font_info, text.as_ref());
     draw_text(
-        app,
+        canvas,
+        text_manager,
         font_info,
         text,
         color,
@@ -694,8 +700,12 @@ fn draw_text_centered(
     );
 }
 
-fn text_size(app: &mut App, font_info: FontInfo, text: impl AsRef<str>) -> (u32, u32) {
-    app.text_manager.text_size(font_info, text.as_ref())
+fn text_size(
+    text_manager: &mut TextManager,
+    font_info: FontInfo,
+    text: impl AsRef<str>,
+) -> (u32, u32) {
+    text_manager.text_size(font_info, text.as_ref())
 }
 
 impl Style {
@@ -728,7 +738,7 @@ impl Style {
 /// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
     let button_rect = layout.to_rect();
-    let (text_width, _text_height) = text_size(app, TITLE_FONT_INFO, text);
+    let (text_width, _text_height) = text_size(&mut app.text_manager, TITLE_FONT_INFO, text);
     let text = if text_width > layout.width {
         format!("{}...", text.split_at(15).0)
     } else {
@@ -745,7 +755,8 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
     app.canvas.fill_rect(button_rect).unwrap();
 
     draw_text_centered(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         style.font_info,
         text,
         button_fg_color,
@@ -778,7 +789,8 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout) {
     app.canvas.set_draw_color(color_hex(0x9A9A9A));
     app.canvas.fill_rect(layout.to_rect()).unwrap();
     draw_text_centered(
-        app,
+        &mut app.canvas,
+        &mut app.text_manager,
         DESCRIPTION_FONT_INFO,
         "No Thumbnail :<",
         color_hex(0x303030),
@@ -795,6 +807,8 @@ fn dbg_layout(app: &mut App, layout: Layout) {
 }
 
 pub fn draw<'frame>(app: &mut App, mostly_static: &mut MostlyStatic) {
+    // TODO: What if we had these return a state and operate this as some sort
+    // of state machine
     match app.screen {
         Screen::Main => draw_main(app, mostly_static),
         Screen::SelectEpisode(anime) => {

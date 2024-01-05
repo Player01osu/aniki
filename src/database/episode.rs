@@ -1,7 +1,7 @@
 use std::{fmt::Display, path::Path, str::FromStr};
 
 use regex::Regex;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 lazy_static::lazy_static! {
     static ref REG_EPS: Regex = Regex::new(r#"(?:(?:^|S|s)(?P<s>\d{2}))?(?: )?(?:_|x|E|e|EP|ep| )(?P<e>\d{1,2})(?:.bits|_| |-|\.|v|$)"#).unwrap();
@@ -97,11 +97,9 @@ impl FromStr for Episode {
                     .ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
                 Ok(Self::Numbered { season, episode })
             }
-            None => {
-                Ok(Self::Special {
-                    filename: s.to_string(),
-                })
-            }
+            None => Ok(Self::Special {
+                filename: s.to_string(),
+            }),
         }
     }
 }
@@ -110,12 +108,7 @@ impl TryFrom<&Path> for Episode {
     type Error = EpisodeParseError;
 
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let filename = path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
+        let filename = path.file_name().unwrap().to_str().unwrap().to_string();
         filename.parse()
     }
 }
@@ -230,7 +223,9 @@ mod tests {
 
     #[test]
     fn episode_from_str_4() {
-        let filepath = Path::new(r"Girls.und.Panzer.S00E02.Water.War!.4.6.1080p-Hi10p.BluRay.FLAC2.1.x264-CTR.[ABDE84A3].mkv");
+        let filepath = Path::new(
+            r"Girls.und.Panzer.S00E02.Water.War!.4.6.1080p-Hi10p.BluRay.FLAC2.1.x264-CTR.[ABDE84A3].mkv",
+        );
         assert_eq!(
             Ok(Episode::Numbered {
                 season: 0,
