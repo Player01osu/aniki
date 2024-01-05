@@ -39,7 +39,7 @@ fn draw_episode_list(
     let layouts = layout
         .scroll_y(app.episode_scroll)
         .split_even_hori(episode_height)
-        .take(anime.len())
+        .take(episode_count)
         .collect::<Box<[Layout]>>();
 
     if app.keydown(Keycode::J) {
