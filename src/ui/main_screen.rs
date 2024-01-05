@@ -16,7 +16,7 @@ use crate::Format;
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered,
     text_size, Layout, MostlyStatic, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
-    TITLE_FONT_COLOR, TITLE_FONT_INFO,
+    TITLE_FONT_COLOR, TITLE_FONT_INFO
 };
 
 pub const CARD_WIDTH: u32 = 200;
@@ -26,6 +26,7 @@ const CARD_Y_PAD_OUTER: i32 = 10;
 const CARD_X_PAD_INNER: i32 = 20;
 const CARD_Y_PAD_INNER: i32 = 20;
 
+// TODO: Clean up event handling.
 fn handle_main_events(
     app: &mut App,
     animes: &mut Database,
@@ -321,7 +322,6 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
     let (card_layouts, scrollbar_layout) =
         Layout::new(0, 0, window_width, window_height).split_vert(796, 800);
 
-    // TODO: Cache expensive layouts
     let (cards_per_row, card_layouts) = card_layouts
         .pad_top(CARD_Y_PAD_OUTER)
         .pad_bottom(CARD_Y_PAD_OUTER)

@@ -376,7 +376,7 @@ impl<'a> TextureManager<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Screen {
     Main,
     SelectEpisode(*const database::Anime),
@@ -803,12 +803,11 @@ fn dbg_layout(app: &mut App, layout: Layout) {
 pub fn draw<'frame>(app: &mut App, mostly_static: &mut MostlyStatic, screen: &mut Screen) {
     match screen {
         Screen::Main => draw_main(app, mostly_static),
-        Screen::SelectEpisode(ref anime) => {
+        Screen::SelectEpisode(anime) => {
             // Anime reference will never get changed while drawing frame
-            let anime = unsafe { &(**anime) };
+            let anime = unsafe { &**anime };
             draw_anime_expand(app, mostly_static, anime);
         }
-
     }
 
     if let Some(next_screen) = app.next_screen.take() {

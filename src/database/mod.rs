@@ -43,19 +43,10 @@ pub struct Database<'a> {
     cached_view: CachedView<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct CachedView<'a> {
     last_updated: u64,
     animes: Vec<&'a mut Anime>,
-}
-
-impl Default for CachedView<'_> {
-    fn default() -> Self {
-        Self {
-            last_updated: 0,
-            animes: vec![],
-        }
-    }
 }
 
 pub type EpisodeMap = Vec<(Episode, Vec<String>)>;
