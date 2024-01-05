@@ -407,14 +407,13 @@ impl Layout {
         height: u32,
         x_pad: i32,
         y_pad: i32,
-        n: usize,
-    ) -> (usize, Vec<Self>) {
+    ) -> (usize, impl Iterator<Item = Self>) {
         self.width += x_pad as u32;
         let wrap_width = self.width;
         let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
         let max_width = (width as i32 + x_pad) * idx_wrap;
         self.x = (wrap_width as i32 - max_width) / 2;
-        self.split_grid(width, height, x_pad, y_pad, n)
+        self.split_grid(width, height, x_pad, y_pad)
     }
 
     pub fn split_grid(
@@ -423,23 +422,18 @@ impl Layout {
         height: u32,
         x_pad: i32,
         y_pad: i32,
-        n: usize,
-    ) -> (usize, Vec<Self>) {
+    ) -> (usize, impl Iterator<Item = Self>) {
         let wrap_width = self.width;
         let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
-        if idx_wrap == 0 {
-            return (1, vec![self]);
-        }
         (
             idx_wrap as usize,
-            (0..=n)
-                .map(|idx| Self {
+            (0..)
+                .map(move |idx| Self {
                     x: self.x + (idx as i32 % idx_wrap * (width as i32 + x_pad)),
                     y: self.y + (height as i32 + y_pad) * (idx as i32 / idx_wrap),
                     width,
                     height,
                 })
-                .collect(),
         )
     }
 

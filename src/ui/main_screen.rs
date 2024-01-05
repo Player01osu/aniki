@@ -331,17 +331,9 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
             CARD_HEIGHT,
             CARD_X_PAD_INNER,
             CARD_Y_PAD_INNER,
-            animes.len() - 1,
         );
+    let card_layouts = card_layouts.take(animes.len()).collect::<Vec<_>>();
 
-    // TODO: Extract into function
-    //
-    // Problem: Relies on state of several other components
-    // (most promently the layout). I would like it to handle
-    // events and know explicitly what it is doing with
-    // components it is passing in.
-    //
-    // TODO: Clean up event handling.
     if app.main_search_anime.is_none() && app.main_alias_anime.is_none() {
         handle_main_events(app, animes, window_height, &card_layouts, cards_per_row);
     } else {
