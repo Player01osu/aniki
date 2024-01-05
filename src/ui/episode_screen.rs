@@ -55,7 +55,7 @@ fn draw_episode_list(
             }
         }
     } else if app.keydown(Keycode::Escape) {
-        app.set_screen(Screen::Main);
+        app.next_screen = Some(Screen::Main);
     }
 
     let mut layout_iter = layouts.iter();

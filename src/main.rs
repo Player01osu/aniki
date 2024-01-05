@@ -5,7 +5,6 @@ use database::json_database::AnimeDatabaseData;
 use database::Database;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
-use sdl2::rect::Rect;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
 use sdl2::{
@@ -69,7 +68,7 @@ impl StringManager {
 
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
-    pub screen: Screen,
+    pub next_screen: Option<Screen>,
     pub input_util: TextInputUtil,
     pub text_manager: TextManager<'a, 'b>,
     pub image_manager: TextureManager<'a>,
@@ -114,7 +113,7 @@ impl<'a, 'b> App<'a, 'b> {
         Self {
             canvas,
             input_util,
-            screen: Screen::Main,
+            next_screen: None,
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
             string_manager: StringManager::new(),
@@ -148,13 +147,6 @@ impl<'a, 'b> App<'a, 'b> {
     pub fn get_string(&mut self, s: &str) -> Rc<str> {
         // TODO: intern this boy
         Rc::from(s)
-    }
-
-    pub fn set_screen(&mut self, screen: Screen) {
-        let (window_width, window_height) = self.canvas.window().size();
-        self.screen = screen;
-        self.canvas
-            .set_viewport(rect!(0, 0, window_width, window_height));
     }
 
     pub fn mouse_points(&self) -> (i32, i32) {
@@ -264,6 +256,7 @@ async fn main() -> anyhow::Result<()> {
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
     let texture_creator = canvas.texture_creator();
     let ttf_ctx = sdl2::ttf::init()?;
+    let mut screen = Screen::Main;
     let mut app = App::new(
         canvas,
         input_util,
@@ -338,7 +331,7 @@ async fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
-        draw(&mut app, &mut mostly_static);
+        draw(&mut app, &mut mostly_static, &mut screen);
         app.canvas.present();
         if app.canvas.window().has_mouse_focus() {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));

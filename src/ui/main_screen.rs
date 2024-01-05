@@ -78,7 +78,7 @@ fn handle_main_events(
             if let Some(idx) = app.main_selected {
                 // Should exist
                 let anime = unsafe { animes.animes().get_unchecked(idx) };
-                app.set_screen(Screen::SelectEpisode(*anime));
+                app.next_screen = Some(Screen::SelectEpisode(*anime));
             }
         }
     }
@@ -583,7 +583,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
             app.episode_scroll = 0;
             app.main_alias_anime = None;
             app.main_search_anime = None;
-            app.set_screen(Screen::SelectEpisode(anime));
+            app.next_screen = Some(Screen::SelectEpisode(anime));
         }
     } else if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
         app.main_extra_menu_id = None;

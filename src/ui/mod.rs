@@ -781,7 +781,7 @@ fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
         .bg_hover_color(color_hex(0x4A4A4A))
         .font_info(BACK_BUTTON_FONT_INFO);
     if draw_button(app, "Back", style, layout) {
-        app.set_screen(screen.clone());
+        app.next_screen = Some(screen);
     }
 }
 
@@ -806,15 +806,18 @@ fn dbg_layout(app: &mut App, layout: Layout) {
     app.canvas.draw_rect(layout.to_rect()).unwrap();
 }
 
-pub fn draw<'frame>(app: &mut App, mostly_static: &mut MostlyStatic) {
-    // TODO: What if we had these return a state and operate this as some sort
-    // of state machine
-    match app.screen {
+pub fn draw<'frame>(app: &mut App, mostly_static: &mut MostlyStatic, screen: &mut Screen) {
+    match screen {
         Screen::Main => draw_main(app, mostly_static),
-        Screen::SelectEpisode(anime) => {
+        Screen::SelectEpisode(ref anime) => {
             // Anime reference will never get changed while drawing frame
-            let anime: &'frame database::Anime = unsafe { &*anime };
+            let anime = unsafe { &(**anime) };
             draw_anime_expand(app, mostly_static, anime);
         }
+
+    }
+
+    if let Some(next_screen) = app.next_screen.take() {
+        *screen = next_screen;
     }
 }
