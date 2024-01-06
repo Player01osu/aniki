@@ -3,6 +3,7 @@
 use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
+use reqwest::RequestBuilder;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
 use sdl2::ttf::Sdl2TtfContext;
@@ -14,7 +15,9 @@ use sdl2::{
 };
 use std::collections::BTreeMap;
 use std::fs;
+use std::future::Future;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ui::FontManager;
 use ui::MostlyStatic;
@@ -54,9 +57,7 @@ impl StringManager {
             .iter()
             .find(|(ptr_a, format_a, _)| *ptr_a == ptr && *format_a == format)
         {
-            Some((_, _, s)) => {
-                    unsafe { &*(s.as_str() as *const _) }
-            }
+            Some((_, _, s)) => unsafe { &*(s.as_str() as *const _) },
             None => {
                 let s = f();
                 self.map.push((ptr, format, s));
@@ -75,6 +76,8 @@ pub struct App<'a, 'b> {
     pub string_manager: StringManager,
     pub thumbnail_path: String,
     pub running: bool,
+
+    pub mutex: HttpMutex,
 
     pub id: u32,
 
@@ -122,6 +125,7 @@ impl<'a, 'b> App<'a, 'b> {
             thumbnail_path,
 
             id: 0,
+            mutex: Arc::new(Mutex::new(vec![])),
 
             main_scroll: 0,
             main_selected: None,
@@ -226,6 +230,41 @@ fn release_lock_file() -> anyhow::Result<()> {
     Ok(())
 }
 
+type HttpMutex = Arc<Mutex<Vec<HttpData>>>;
+
+fn poll_http(app: &mut App) {
+    let mutex = &app.mutex;
+    if let Ok(ref mut lock) = mutex.try_lock() {
+        for data in lock.drain(..) {
+            match data {
+                _ => unimplemented!(),
+            }
+        }
+    }
+}
+
+fn send_request<Fut>(
+    mutex: &HttpMutex,
+    request: RequestBuilder,
+    f: impl FnOnce(reqwest::Response) -> Fut + Send + 'static,
+) where
+    Fut: Future<Output = HttpData> + Send,
+{
+    let mutex = Arc::clone(mutex);
+    tokio::spawn(async move {
+        let res = request.send().await?;
+        let v = f(res).await;
+        let mut guard = mutex.lock().unwrap();
+        guard.push(v);
+        anyhow::Ok(())
+    });
+}
+
+#[derive(Clone, Debug)]
+pub enum HttpData {
+    String(String),
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     lock_file()?;
@@ -274,6 +313,7 @@ async fn main() -> anyhow::Result<()> {
     app.canvas.present();
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
+        poll_http(&mut app);
         if app.canvas.window().has_mouse_focus() {
             app.reset_frame_state()
         }
