@@ -20,7 +20,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ui::FontManager;
-use ui::MostlyStatic;
 use ui::Screen;
 use ui::TextManager;
 use ui::TextureManager;
@@ -75,6 +74,7 @@ pub struct App<'a, 'b> {
     pub image_manager: TextureManager<'a>,
     pub string_manager: StringManager,
     pub thumbnail_path: String,
+    pub database: Database<'a>,
     pub running: bool,
 
     pub mutex: HttpMutex,
@@ -108,6 +108,7 @@ pub struct App<'a, 'b> {
 impl<'a, 'b> App<'a, 'b> {
     pub fn new(
         canvas: Canvas<Window>,
+        database: Database<'a>,
         input_util: TextInputUtil,
         ttf_ctx: &'a Sdl2TtfContext,
         texture_creator: &'a TextureCreator<WindowContext>,
@@ -115,6 +116,7 @@ impl<'a, 'b> App<'a, 'b> {
     ) -> Self {
         Self {
             canvas,
+            database,
             input_util,
             next_screen: None,
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
@@ -295,19 +297,19 @@ async fn main() -> anyhow::Result<()> {
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
     let texture_creator = canvas.texture_creator();
     let ttf_ctx = sdl2::ttf::init()?;
+    // TODO: Run this asynchronously and poll in draw loop
+    let mut database = Database::new(database_path, video_paths)?;
+    database.retrieve_images(&thumbnail_path)?;
     let mut screen = Screen::Main;
     let mut app = App::new(
         canvas,
+        database,
         input_util,
         &ttf_ctx,
         &texture_creator,
         thumbnail_path.to_string(),
     );
 
-    // TODO: Run this asynchronously and poll in draw loop
-    let mut database = Database::new(database_path, video_paths)?;
-    database.retrieve_images(&thumbnail_path)?;
-    let mut mostly_static = MostlyStatic::new(database);
 
     app.canvas.clear();
     app.canvas.present();
@@ -371,7 +373,7 @@ async fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
-        draw(&mut app, &mut mostly_static, &mut screen);
+        draw(&mut app, &mut screen);
         app.canvas.present();
         if app.canvas.window().has_mouse_focus() {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
@@ -387,7 +389,7 @@ async fn main() -> anyhow::Result<()> {
     {
         return Ok(());
     }
-    mostly_static.animes.write(cfg.database_path())?;
+    app.database.write(cfg.database_path())?;
 
     Ok(())
 }

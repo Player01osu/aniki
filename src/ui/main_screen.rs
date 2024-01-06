@@ -6,7 +6,7 @@ use sdl2::{
 
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
-    database::{self, Database},
+    database,
     rect,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
@@ -15,7 +15,7 @@ use crate::Format;
 
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered,
-    text_size, Layout, MostlyStatic, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
+    text_size, Layout, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
     TITLE_FONT_COLOR, TITLE_FONT_INFO
 };
 
@@ -29,7 +29,6 @@ const CARD_Y_PAD_INNER: i32 = 20;
 // TODO: Clean up event handling.
 fn handle_main_events(
     app: &mut App,
-    animes: &mut Database,
     window_height: u32,
     card_layouts: &[Layout],
     cards_per_row: usize,
@@ -78,7 +77,7 @@ fn handle_main_events(
         } else if app.keydown(Keycode::Return) {
             if let Some(idx) = app.main_selected {
                 // Should exist
-                let anime = unsafe { animes.animes().get_unchecked(idx) };
+                let anime = unsafe { app.database.animes().get_unchecked(idx) };
                 app.next_screen = Some(Screen::SelectEpisode(*anime));
             }
         }
@@ -148,19 +147,18 @@ fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
 
 fn draw_main_anime_search(
     app: &mut App,
-    mostly_static: &mut MostlyStatic,
     layout: Layout,
     search_id: u32,
 ) {
     let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
-    let anime = &mut mostly_static.animes.animes()[search_id as usize];
+    let anime = &mut app.database.animes()[search_id as usize];
     let options = {
         let search_previous: &mut Option<(String, Box<[*const AnimeDatabaseData]>)> =
             unsafe { &mut *(&mut app.main_search_previous as *mut _) };
         match search_previous {
             Some(prev) if prev.0 == app.text_input => &prev.1,
             _ => {
-                let animes = mostly_static.animes.fuzzy_find_anime(&app.text_input);
+                let animes = app.database.fuzzy_find_anime(&app.text_input);
                 let animes_cast: Box<[*const AnimeDatabaseData]> = animes
                     .iter()
                     .map(|v| (*v) as *const AnimeDatabaseData)
@@ -185,8 +183,8 @@ fn draw_main_anime_search(
         let option = unsafe { &**option };
         if draw_option(app, layout, &option.title()) {
             anime.set_metadata(Some((*option).clone()));
-            mostly_static
-                .animes
+            app
+                .database
                 .retrieve_images(&app.thumbnail_path)
                 .unwrap();
             app.main_search_anime = None;
@@ -210,11 +208,10 @@ fn draw_main_anime_search(
 
 fn draw_main_anime_alias(
     app: &mut App,
-    mostly_static: &mut MostlyStatic,
     layout: Layout,
     alias_id: u32,
 ) {
-    let anime = &mut mostly_static.animes.animes()[alias_id as usize];
+    let anime = &mut app.database.animes()[alias_id as usize];
     let (_, text_height) = app
         .text_manager
         .text_size(BACK_BUTTON_FONT_INFO, &app.text_input);
@@ -316,8 +313,7 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
     false
 }
 
-pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
-    let animes = &mut mostly_static.animes;
+pub fn draw_main(app: &mut App) {
     let (window_width, window_height) = app.canvas.window().size();
     let (card_layouts, scrollbar_layout) =
         Layout::new(0, 0, window_width, window_height).split_vert(796, 800);
@@ -332,10 +328,10 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
             CARD_X_PAD_INNER,
             CARD_Y_PAD_INNER,
         );
-    let card_layouts = card_layouts.take(animes.len()).collect::<Vec<_>>();
+    let card_layouts = card_layouts.take(app.database.len()).collect::<Vec<_>>();
 
     if app.main_search_anime.is_none() && app.main_alias_anime.is_none() {
-        handle_main_events(app, animes, window_height, &card_layouts, cards_per_row);
+        handle_main_events(app, window_height, &card_layouts, cards_per_row);
     } else {
         handle_main_search_events(app);
     }
@@ -347,7 +343,7 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         }
     }
 
-    let anime_list = animes.animes();
+    let anime_list = app.database.animes();
     let mut any = false;
     for (idx, (grid_space, anime)) in card_layouts.iter().zip(anime_list.iter_mut()).enumerate() {
         if grid_space.y + grid_space.height as i32 > 0 {
@@ -393,7 +389,7 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         let y = (window_height - height) / 2;
         let float_layout = Layout::new(x as i32, y as i32, width, height);
 
-        draw_main_anime_search(app, mostly_static, float_layout, search_id);
+        draw_main_anime_search(app, float_layout, search_id);
     }
 
     // Draw alias
@@ -404,7 +400,7 @@ pub fn draw_main(app: &mut App, mostly_static: &mut MostlyStatic) {
         let x = (window_width - width) / 2;
         let y = (window_height - height) / 2;
         let float_layout = Layout::new(x as i32, y as i32, width, height);
-        draw_main_anime_alias(app, mostly_static, float_layout, alias_id);
+        draw_main_anime_alias(app, float_layout, alias_id);
     }
 }
 

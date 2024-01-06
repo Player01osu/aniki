@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered, Layout,
-    MostlyStatic, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
+    Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
     THUMBNAIL_MISSING_SIZE, TITLE_FONT, TITLE_FONT_COLOR,
 };
 
@@ -28,7 +28,6 @@ pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 
 fn draw_episode_list(
     app: &mut App,
-    mostly_static: &mut MostlyStatic,
     anime: &database::Anime,
     layout: Layout,
 ) {
@@ -62,7 +61,6 @@ fn draw_episode_list(
     let current_ep = anime.current_episode();
     draw_episode(
         app,
-        mostly_static,
         anime,
         &format!("Current: {current_ep}"),
         current_ep.clone(),
@@ -74,7 +72,6 @@ fn draw_episode_list(
     if let Some(next_ep) = next_ep {
         draw_episode(
             app,
-            mostly_static,
             anime,
             &format!("Next: {next_ep}"),
             next_ep,
@@ -87,7 +84,6 @@ fn draw_episode_list(
     for (episode_layout, (episode, _)) in layout_iter.zip(episode_map) {
         draw_episode(
             app,
-            mostly_static,
             anime,
             &format!("{episode}"),
             episode.to_owned(),
@@ -115,7 +111,7 @@ fn draw_episode_list(
     }
 }
 
-pub fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, anime: &database::Anime) {
+pub fn draw_anime_expand(app: &mut App, anime: &database::Anime) {
     let (window_width, window_height) = app.canvas.window().size();
     // TODO: Think about abstracting scrolling type windows out
     // into a function or data structure
@@ -133,7 +129,7 @@ pub fn draw_anime_expand(app: &mut App, mostly_static: &mut MostlyStatic, anime:
 
     draw_top_panel_anime_expand(app, anime, top_description_layout);
     draw_back_button(app, Screen::Main, back_button_layout.pad_right(5));
-    draw_episode_list(app, mostly_static, anime, bottom_description_layout);
+    draw_episode_list(app, anime, bottom_description_layout);
 }
 
 fn draw_top_panel_with_metadata(
@@ -231,7 +227,6 @@ fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: L
 
 fn draw_episode(
     app: &mut App,
-    mostly_static: &mut MostlyStatic,
     anime: &database::Anime,
     text: &str,
     episode: Episode,
@@ -253,7 +248,7 @@ fn draw_episode(
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout.to_rect()).unwrap();
         if app.mouse_clicked_left() {
-            let anime = mostly_static.animes.get_anime(anime.filename()).unwrap();
+            let anime = app.database.get_anime(anime.filename()).unwrap();
             anime.update_watched(episode.to_owned()).unwrap();
             let paths = anime.find_episode_path(&episode);
             app.episode_scroll = 0;

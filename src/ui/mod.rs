@@ -800,13 +800,13 @@ fn dbg_layout(app: &mut App, layout: Layout) {
     app.canvas.draw_rect(layout.to_rect()).unwrap();
 }
 
-pub fn draw<'frame>(app: &mut App, mostly_static: &mut MostlyStatic, screen: &mut Screen) {
+pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     match screen {
-        Screen::Main => draw_main(app, mostly_static),
+        Screen::Main => draw_main(app),
         Screen::SelectEpisode(anime) => {
             // Anime reference will never get changed while drawing frame
             let anime = unsafe { &**anime };
-            draw_anime_expand(app, mostly_static, anime);
+            draw_anime_expand(app, anime);
         }
     }
 
