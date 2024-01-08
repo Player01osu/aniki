@@ -434,13 +434,12 @@ impl Layout {
         let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
         (
             idx_wrap as usize,
-            (0..)
-                .map(move |idx| Self {
-                    x: self.x + (idx as i32 % idx_wrap * (width as i32 + x_pad)),
-                    y: self.y + (height as i32 + y_pad) * (idx as i32 / idx_wrap),
-                    width,
-                    height,
-                })
+            (0..).map(move |idx| Self {
+                x: self.x + (idx as i32 % idx_wrap * (width as i32 + x_pad)),
+                y: self.y + (height as i32 + y_pad) * (idx as i32 / idx_wrap),
+                width,
+                height,
+            }),
         )
     }
 
