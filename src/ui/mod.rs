@@ -7,6 +7,7 @@ use crate::database::Database;
 use crate::App;
 use anyhow::Context;
 use anyhow::Result;
+use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadSurface;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Mod;
@@ -814,7 +815,17 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
             (style.fg_color, style.bg_color)
         };
     app.canvas.set_draw_color(button_bg_color);
-    app.canvas.fill_rect(button_rect).unwrap();
+    //app.canvas.fill_rect(button_rect).unwrap();
+    app.canvas
+        .rounded_box(
+            button_rect.left() as i16,
+            button_rect.top() as i16,
+            button_rect.right() as i16,
+            button_rect.bottom() as i16,
+            7,
+            button_bg_color
+        )
+        .unwrap();
 
     draw_text_centered(
         &mut app.canvas,
