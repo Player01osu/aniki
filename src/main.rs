@@ -274,6 +274,8 @@ pub enum HttpData {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     lock_file()?;
+    let mut fps = sdl2::gfx::framerate::FPSManager::new();
+    fps.set_framerate(30).unwrap();
     let cfg = Config::parse_cfg();
     let database_path = cfg.database_path().to_string_lossy();
     let thumbnail_path = cfg.thumbnail_path().to_string_lossy();
@@ -318,13 +320,12 @@ async fn main() -> anyhow::Result<()> {
         thumbnail_path.to_string(),
     );
 
-
     app.canvas.clear();
     app.canvas.present();
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
         poll_http(&mut app);
-        if app.canvas.window().has_mouse_focus() {
+        if app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus() {
             app.reset_frame_state()
         }
         app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
@@ -383,11 +384,15 @@ async fn main() -> anyhow::Result<()> {
         }
         draw(&mut app, &mut screen);
         app.canvas.present();
-        if app.canvas.window().has_mouse_focus() {
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-        } else {
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 3));
-        }
+        fps.delay();
+        //if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
+        //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 3));
+        //}
+        //if app.canvas.window().has_input_focus() {
+        //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
+        //} else {
+        //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 3));
+        //}
     }
 
     release_lock_file()?;
