@@ -280,6 +280,8 @@ async fn main() -> anyhow::Result<()> {
         .collect();
 
     let sdl_context = sdl2::init().map_err(|e| anyhow::anyhow!(e))?;
+    sdl2::hint::set("SDL_RENDER_SCALE_QUALITY", "1");
+    sdl2::hint::set("SDL_RENDER_BATCHING", "1");
     let video_subsystem = sdl_context.video().map_err(|e| anyhow::anyhow!(e))?;
     video_subsystem.enable_screen_saver();
 
