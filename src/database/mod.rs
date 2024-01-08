@@ -6,8 +6,9 @@ use anyhow::Context;
 use episode::Episode;
 use flexbuffers::{DeserializationError, SerializationError};
 use std::collections::btree_map::Entry;
-use std::fs::{metadata, read_dir, File};
+use std::fs::{metadata, read_dir, File, DirEntry};
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::SystemTimeError;
 use std::{collections::BTreeMap, path::Path, time::SystemTime};
 
@@ -114,6 +115,14 @@ fn get_time() -> u64 {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_secs()
+}
+
+fn is_empty_dir_entry(dir_entry: &DirEntry) -> bool {
+    is_empty_dir(dir_entry.path())
+}
+
+fn is_empty_dir(path: PathBuf) -> bool {
+    path.read_dir().map(|mut v| v.next().is_none()).unwrap_or(false)
 }
 
 impl Anime {
@@ -442,6 +451,7 @@ impl<'a> Database<'a> {
         read_dir(directory.as_ref())
             .unwrap()
             .filter_map(|v| v.ok())
+            .filter(|v| !is_empty_dir_entry(v))
             .map(|v| (o_to_str!(v.file_name()), v.path()))
             .for_each(|(name, path)| {
                 match self.anime_map.entry(name.clone().into()) {
@@ -549,7 +559,9 @@ impl<'a> Database<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, path::PathBuf};
+
+    use super::is_empty_dir;
 
     #[test]
     fn btree_test() {
@@ -566,5 +578,14 @@ mod tests {
             BTreeMap::from([("hello", vec![20, 1]), ("hi", vec![5])]),
             btree
         );
+    }
+
+    #[test]
+    fn empty_directory_test() {
+        let directory = PathBuf::from("tests/empty-dir-test");
+        std::fs::create_dir_all(&directory).unwrap();
+        assert!(directory.exists());
+        assert!(is_empty_dir(directory));
+        //read_dir
     }
 }
