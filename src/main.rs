@@ -254,12 +254,12 @@ fn send_request<Fut>(
     request: RequestBuilder,
     f: impl FnOnce(reqwest::Response) -> Fut + Send + 'static,
 ) where
-    Fut: Future<Output = HttpData> + Send,
+    Fut: Future<Output = anyhow::Result<HttpData>> + Send,
 {
     let mutex = Arc::clone(mutex);
     tokio::spawn(async move {
         let res = request.send().await?;
-        let v = f(res).await;
+        let v = f(res).await?;
         let mut guard = mutex.lock().unwrap();
         guard.push(v);
         anyhow::Ok(())
