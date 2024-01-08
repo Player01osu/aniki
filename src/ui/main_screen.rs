@@ -1,4 +1,5 @@
 use sdl2::rect::Rect;
+use sdl2::render::BlendMode;
 use sdl2::{
     keyboard::{self, Keycode},
     url::open_url,
@@ -496,6 +497,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     draw_thumbnail(app, anime, image_layout);
 
     if is_card_selected(app, layout, idx) {
+        app.canvas.set_blend_mode(BlendMode::Blend);
         selected = true;
         app.main_selected = Some(idx);
         app.canvas.set_draw_color(color_hex_a(0x303030AA));
