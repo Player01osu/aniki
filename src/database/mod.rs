@@ -444,10 +444,9 @@ impl<'a> Database<'a> {
             .filter_map(|v| v.ok())
             .map(|v| (o_to_str!(v.file_name()), v.path()))
             .for_each(|(name, path)| {
-                let chars = name.clone();
-                let mut chars = chars.chars();
                 match self.anime_map.entry(name.clone().into()) {
                     Entry::Vacant(v) => {
+                        let mut chars = name.chars();
                         sanitize::sanitize_name(&mut chars, &mut sanitized_name);
 
                         // `JsonIndexed::map()` calls to `optimize_json_db`, which
