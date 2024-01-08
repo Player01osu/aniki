@@ -800,7 +800,7 @@ impl Style {
 /// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
     let button_rect = layout.to_rect();
-    let (text_width, _text_height) = text_size(&mut app.text_manager, TITLE_FONT_INFO, text);
+    let (text_width, _text_height) = text_size(&mut app.text_manager, style.font_info, text);
     let text = if text_width > layout.width {
         format!("{}...", text.split_at(15).0)
     } else {
