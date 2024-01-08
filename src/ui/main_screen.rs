@@ -16,7 +16,7 @@ use crate::Format;
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered,
     text_size, Layout, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
-    TITLE_FONT_COLOR, TITLE_FONT_INFO
+    TITLE_FONT_COLOR, TITLE_FONT_INFO, draw_input_box, INPUT_BOX_FONT_INFO
 };
 
 pub const CARD_WIDTH: u32 = 200;
@@ -89,59 +89,6 @@ fn handle_main_search_events(app: &mut App) {
         app.main_search_anime = None;
         app.main_alias_anime = None;
         app.input_util.stop();
-    }
-
-    if app.keydown(Keycode::Backspace) {
-        app.text_input.pop();
-    }
-}
-
-fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
-    let font_info = BACK_BUTTON_FONT_INFO;
-    let pad_side = 5;
-    let pad_height = 2;
-    let (text_width, text_height) = app.text_manager.text_size(font_info, &app.text_input);
-    let layout = Layout::new(x, y, width, text_height);
-    let text_shift_x = text_width.saturating_sub(width - pad_side as u32 * 2);
-    let text_layout = Layout::new(
-        layout.x + pad_side - text_shift_x as i32,
-        y,
-        width,
-        text_height,
-    );
-
-    app.input_util.start();
-
-    // Draw box
-    app.canvas.set_draw_color(color_hex(0x909090));
-    app.canvas.draw_rect(layout.to_rect()).unwrap();
-
-    // Draw cursor
-    app.canvas.set_draw_color(color_hex(0xB0B0B0));
-    app.canvas
-        .fill_rect(rect!(
-            text_layout.x + text_width as i32,
-            text_layout.y + pad_height,
-            1,
-            text_layout.height - (pad_height as u32 * 2)
-        ))
-        .unwrap();
-
-    if !app.text_input.is_empty() {
-        let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
-        app.canvas.set_clip_rect(layout.to_rect());
-        draw_text(
-            &mut app.canvas,
-            &mut app.text_manager,
-            font_info,
-            input,
-            color_hex(0x909090),
-            text_layout.x,
-            text_layout.y,
-            None,
-            None,
-        );
-        app.canvas.set_clip_rect(None);
     }
 }
 
@@ -269,7 +216,7 @@ fn draw_main_anime_alias(
 }
 
 fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
-    let font_info = BACK_BUTTON_FONT_INFO;
+    let font_info = INPUT_BOX_FONT_INFO;
     if layout.to_rect().contains_point(app.mouse_points()) {
         app.canvas.set_draw_color(color_hex(0x505050));
         app.canvas.fill_rect(layout.to_rect()).unwrap();

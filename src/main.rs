@@ -4,6 +4,7 @@ use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
 use reqwest::RequestBuilder;
+use sdl2::clipboard::ClipboardUtil;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
 use sdl2::ttf::Sdl2TtfContext;
@@ -68,6 +69,7 @@ impl StringManager {
 
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
+    pub clipboard: ClipboardUtil,
     pub next_screen: Option<Screen>,
     pub input_util: TextInputUtil,
     pub text_manager: TextManager<'a, 'b>,
@@ -108,6 +110,7 @@ pub struct App<'a, 'b> {
 impl<'a, 'b> App<'a, 'b> {
     pub fn new(
         canvas: Canvas<Window>,
+        clipboard: ClipboardUtil,
         database: Database<'a>,
         input_util: TextInputUtil,
         ttf_ctx: &'a Sdl2TtfContext,
@@ -116,6 +119,7 @@ impl<'a, 'b> App<'a, 'b> {
     ) -> Self {
         Self {
             canvas,
+            clipboard,
             database,
             input_util,
             next_screen: None,
@@ -291,6 +295,7 @@ async fn main() -> anyhow::Result<()> {
         .resizable()
         .build()?;
 
+    let clipboard = video_subsystem.clipboard();
     let input_util = video_subsystem.text_input();
     input_util.stop();
 
@@ -305,6 +310,7 @@ async fn main() -> anyhow::Result<()> {
     let mut screen = Screen::Main;
     let mut app = App::new(
         canvas,
+        clipboard,
         database,
         input_util,
         &ttf_ctx,

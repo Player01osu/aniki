@@ -8,6 +8,8 @@ use crate::App;
 use anyhow::Context;
 use anyhow::Result;
 use sdl2::image::LoadSurface;
+use sdl2::keyboard::Keycode;
+use sdl2::keyboard::Mod;
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::render::Texture;
@@ -67,6 +69,10 @@ const PLAY_BUTTON_FONT_COLOR: u32 = TITLE_FONT_COLOR;
 const BACK_BUTTON_FONT_PT: u16 = 24;
 const BACK_BUTTON_FONT: &str = TITLE_FONT;
 const BACK_BUTTON_FONT_INFO: (&str, u16) = (BACK_BUTTON_FONT, BACK_BUTTON_FONT_PT);
+
+const INPUT_BOX_FONT_PT: u16 = 24;
+const INPUT_BOX_FONT: &str = TITLE_FONT;
+const INPUT_BOX_FONT_INFO: (&str, u16) = (INPUT_BOX_FONT, INPUT_BOX_FONT_PT);
 
 const DEFAULT_BUTTON_FONT_PT: u16 = 24;
 const DEFAULT_BUTTON_FONT: &str = TITLE_FONT;
@@ -568,6 +574,68 @@ pub fn color_hex_a(hex: u32) -> Color {
 #[test]
 fn color_hex_a_test_0() {
     assert_eq!(color_hex_a(0xDEADBEEF), Color::RGBA(0xDE, 0xAD, 0xBE, 0xEF));
+}
+
+pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
+    let font_info = INPUT_BOX_FONT_INFO;
+    let pad_side = 5;
+    let pad_height = 2;
+    let (text_width, text_height) = app.text_manager.text_size(font_info, &app.text_input);
+    let layout = Layout::new(x, y, width, text_height);
+    let text_shift_x = text_width.saturating_sub(width - pad_side as u32 * 2);
+    let text_layout = Layout::new(
+        layout.x + pad_side - text_shift_x as i32,
+        y,
+        width,
+        text_height,
+    );
+
+    app.input_util.start();
+
+    // Draw box
+    app.canvas.set_draw_color(color_hex(0x909090));
+    app.canvas.draw_rect(layout.to_rect()).unwrap();
+
+    // Draw cursor
+    app.canvas.set_draw_color(color_hex(0xB0B0B0));
+    app.canvas
+        .fill_rect(rect!(
+            text_layout.x + text_width as i32,
+            text_layout.y + pad_height,
+            1,
+            text_layout.height - (pad_height as u32 * 2)
+        ))
+        .unwrap();
+
+    if !app.text_input.is_empty() {
+        let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
+        app.canvas.set_clip_rect(layout.to_rect());
+        draw_text(
+            &mut app.canvas,
+            &mut app.text_manager,
+            font_info,
+            input,
+            color_hex(0x909090),
+            text_layout.x,
+            text_layout.y,
+            None,
+            None,
+        );
+        app.canvas.set_clip_rect(None);
+    }
+
+    if app.keydown(Keycode::Backspace) {
+        app.text_input.pop();
+    } else if app.keymod.contains(Mod::LCTRLMOD) && app.keydown(Keycode::V) {
+        match app.clipboard.clipboard_text() {
+            Ok(s) => {
+                app.text_input.push_str(&s);
+            }
+            Err(e) => {
+                dbg!(e);
+            }
+        };
+    }
 }
 
 // TODO: Add filler image if image not found
