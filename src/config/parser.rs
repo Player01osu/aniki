@@ -123,6 +123,7 @@ pub(super) fn next_node(lexer: &mut ConfigLexer<'_>) -> Result<Option<Node>> {
                 .or(expect_token(&next_token, TokenKind::Eof))?;
             Ok(Some(Node::VideoPaths(paths)))
         }
+        TokenKind::Newline => return next_node(lexer),
         TokenKind::Eof => Ok(None),
         kind => Err(anyhow::anyhow!("Unexpected token: {kind:?}")),
     }
