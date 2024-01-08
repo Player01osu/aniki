@@ -204,7 +204,10 @@ impl Anime {
             );
         self.episodes.sort_by(|(a, _), (b, _)| a.cmp(b));
         if !self.has_episode(&self.current_episode) {
-            self.current_episode = self.episodes[0].0.clone();
+            if let Some((ref episode, _)) = self.episodes.get(0) {
+                self.current_episode = episode.clone();
+            }
+
         }
     }
 
@@ -216,8 +219,8 @@ impl Anime {
         self.episodes
             .iter()
             .find(|(v, _)| episode.eq(v))
-            .map(|(_, v)| v)
-            .unwrap_or_else(|| &self.episodes[0].1)
+            .map(|(_, v)| v.as_slice())
+            .unwrap_or_else(|| &[])
     }
 
     pub fn has_next_episode(&self) -> bool {
