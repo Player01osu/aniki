@@ -241,7 +241,7 @@ pub fn skim_matcher() -> SkimMatcherV2 {
         gap_start,
         gap_extension,
         bonus_first_char_multiplier,
-        bonus_head: score_match * 2 / 3,
+        bonus_head: score_match * 4 / 5,
         bonus_break: score_match / 2 + gap_extension,
         bonus_camel: score_match / 2 + 2 * gap_extension,
         bonus_consecutive: -(gap_start + gap_extension),
