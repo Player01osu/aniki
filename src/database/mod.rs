@@ -6,7 +6,7 @@ use anyhow::Context;
 use episode::Episode;
 use flexbuffers::{DeserializationError, SerializationError};
 use std::collections::btree_map::Entry;
-use std::fs::{metadata, read_dir, File, DirEntry};
+use std::fs::{metadata, read_dir, DirEntry, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTimeError;
@@ -15,6 +15,8 @@ use std::{collections::BTreeMap, path::Path, time::SystemTime};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use walkdir::WalkDir;
+
+use crate::anilist_serde::{Collection, Media, MediaEntry};
 
 use self::json_database::{AnimeDatabaseData, JsonIndexed};
 
@@ -35,13 +37,23 @@ pub struct Anime {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct AniListCred {
+    user_id: u64,
+    access_token: Box<str>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Database<'a> {
     anime_map: BTreeMap<Box<str>, Anime>,
     previous_update: Vec<(Box<str>, u64)>,
+    skip_login: bool,
+    anilist_cred: Option<AniListCred>,
     #[serde(skip)]
     indexed_db: Option<JsonIndexed<'a>>,
     #[serde(skip)]
     cached_view: CachedView<'a>,
+    #[serde(skip)]
+    anilist_collections: Option<Box<[Media]>>,
 }
 
 #[derive(Debug, Default)]
@@ -122,7 +134,9 @@ fn is_empty_dir_entry(dir_entry: &DirEntry) -> bool {
 }
 
 fn is_empty_dir(path: PathBuf) -> bool {
-    path.read_dir().map(|mut v| v.next().is_none()).unwrap_or(false)
+    path.read_dir()
+        .map(|mut v| v.next().is_none())
+        .unwrap_or(false)
 }
 
 impl Anime {
@@ -182,8 +196,77 @@ impl Anime {
         self.metadata = metadata;
     }
 
+    fn set_last_watched(&mut self, time: u64) {
+        self.last_watched = time;
+    }
+
+    fn set_progress(&mut self, progress: u32) {
+        let mut guess = None;
+        let weigh_guess = |enumeration: u32, episode: Option<u32>| {
+            let enum_diff = enumeration.abs_diff(progress);
+            episode
+                .map(|n| enum_diff.abs_diff(n.abs_diff(progress)))
+                .unwrap_or(enum_diff)
+        };
+
+        let mut replace_weight = |episode_struct: &Episode, enumeration, episode| {
+            let weight = weigh_guess(enumeration, episode);
+            if let Some((prev_weight, _)) = guess {
+                if prev_weight > weight {
+                    guess = Some((weight, episode_struct.clone()));
+                }
+            } else {
+                guess = Some((weight, episode_struct.clone()));
+            }
+        };
+
+        for (n, (episode_struct, _)) in self.episodes.iter().enumerate() {
+            let n = n as u32 + 1; // Enumerate from 1
+
+            match episode_struct {
+                Episode::Numbered { episode, .. } if n == progress && *episode == progress => {
+                    self.current_episode = episode_struct.clone();
+                    return;
+                }
+                Episode::Numbered { episode, .. } if n == progress => {
+                    replace_weight(&episode_struct, n, Some(*episode));
+                }
+                _ if n == progress => {
+                    replace_weight(&episode_struct, n, None);
+                }
+                _ => (),
+            }
+        }
+
+        if let Some((_, guess)) = guess {
+            self.current_episode = guess;
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.episodes.len()
+    }
+
+    pub fn anilist_id(&self) -> Option<u32> {
+        let metadata = match self.metadata() {
+            Some(v) => v,
+            None => return None,
+        };
+
+        for source in metadata.sources() {
+            let url = reqwest::Url::parse(source.as_str()).expect("Valid url");
+            if let Some("anilist.co") = url.domain() {
+                return Some(
+                    url.path()
+                        .chars()
+                        .filter(char::is_ascii_digit)
+                        .collect::<String>()
+                        .parse::<u32>()
+                        .unwrap(),
+                );
+            }
+        }
+        None
     }
 
     pub fn update_episodes(&mut self) {
@@ -216,7 +299,6 @@ impl Anime {
             if let Some((ref episode, _)) = self.episodes.get(0) {
                 self.current_episode = episode.clone();
             }
-
         }
     }
 
@@ -366,6 +448,23 @@ fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+impl AniListCred {
+    pub fn new(user_id: u64, access_token: String) -> Self {
+        Self {
+            user_id,
+            access_token: access_token.into(),
+        }
+    }
+
+    pub fn user_id(&self) -> u64 {
+        self.user_id
+    }
+
+    pub fn access_token(&self) -> &str {
+        &self.access_token
+    }
+}
+
 impl<'a> Database<'a> {
     pub fn new(path: impl AsRef<str>, anime_directories: Vec<impl AsRef<str>>) -> Result<Self> {
         let path = path.as_ref();
@@ -415,14 +514,47 @@ impl<'a> Database<'a> {
                 let mut db = Self {
                     anime_map: BTreeMap::new(),
                     previous_update: Vec::new(),
+                    skip_login: false,
+                    anilist_cred: None,
                     indexed_db: None,
                     cached_view: CachedView::default(),
+                    anilist_collections: None,
                 };
                 db.update(anime_directories);
                 db.update_cached();
                 Ok(db)
             }
         }
+    }
+
+    pub fn skip_login(&self) -> bool {
+        self.skip_login
+    }
+
+    pub fn skip_login_set(&mut self, v: bool) {
+        self.skip_login = v;
+    }
+
+    pub fn anilist_access_token(&self) -> Option<&str> {
+        self.anilist_cred
+            .as_ref()
+            .map(|v| v.access_token())
+    }
+
+    pub fn anilist_cred_set(&mut self, cred: Option<AniListCred>) {
+        self.anilist_cred = cred;
+    }
+
+    pub fn anilist_cred(&self) -> &Option<AniListCred> {
+        &self.anilist_cred
+    }
+
+    pub fn anilist_user_id(&self) -> Option<u64> {
+        self.anilist_cred.as_ref().map(|v| v.user_id())
+    }
+
+    pub fn anilist_clear(&mut self) {
+        self.anilist_cred = None;
     }
 
     pub fn len(&self) -> usize {
@@ -546,14 +678,45 @@ impl<'a> Database<'a> {
         unsafe { std::mem::transmute(self.cached_view.animes.as_mut_slice()) }
     }
 
-    pub fn get_anime(&mut self, anime: impl AsRef<str>) -> Option<&mut Anime> {
-        self.anime_map.get_mut(anime.as_ref())
+    pub fn get_anime<'b>(&mut self, anime: impl AsRef<str>) -> Option<&'b mut Anime> {
+        self.anime_map
+            .get_mut(anime.as_ref())
+            .map(|v| unsafe { &mut *(v as *mut _) })
     }
 
     pub fn fuzzy_find_anime(&mut self, input: &str) -> Box<[&'a AnimeDatabaseData]> {
         self.indexed_db
             .get_or_insert_with(JsonIndexed::new)
             .fuzzy_find_anime(input)
+    }
+
+    pub fn update_media<'b>(&mut self, entry: &MediaEntry) -> Vec<&'b mut Anime> {
+        let mut vec = vec![];
+        'anime: for anime in self.animes() {
+            match anime.anilist_id() {
+                Some(anilist_id) if anilist_id == entry.id() => {
+                    if anime.last_watched > entry.updated_at() {
+                        let anime = unsafe { &mut *(*anime as *mut _) };
+                        vec.push(anime);
+                        continue 'anime;
+                    }
+
+                    anime.set_last_watched(entry.updated_at());
+                    anime.set_progress(entry.progress());
+                }
+                _ => (),
+            }
+        }
+        vec
+    }
+
+    /// Returns list of entries that need to be updated
+    pub fn update_anilist_list<'b>(&mut self, collection: &Collection) -> Box<[&'b mut Anime]> {
+        collection
+            .entries()
+            .iter()
+            .flat_map(|entry| self.update_media(entry).into_iter())
+            .collect()
     }
 }
 
