@@ -595,7 +595,6 @@ fn color_hex_a_test_0() {
     assert_eq!(color_hex_a(0xDEADBEEF), Color::RGBA(0xDE, 0xAD, 0xBE, 0xEF));
 }
 
-pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
 pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut database::Anime) {
     if let Some(media_id) = anime.anilist_id() {
         if let Episode::Numbered { episode, .. } = anime.current_episode() {
@@ -615,6 +614,7 @@ pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut
     }
 }
 
+pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) -> bool {
     let font_info = INPUT_BOX_FONT_INFO;
     let pad_side = 5;
     let pad_height = 2;
@@ -673,7 +673,10 @@ pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut
                 dbg!(e);
             }
         };
+    } else if app.keydown(Keycode::Return) {
+        return true;
     }
+    false
 }
 
 // TODO: Add filler image if image not found
