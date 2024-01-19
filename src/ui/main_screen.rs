@@ -30,15 +30,35 @@ const CARD_Y_PAD_INNER: i32 = 20;
 // TODO: Clean up event handling.
 fn handle_main_events(
     app: &mut App,
-    window_height: u32,
+    layout: Layout,
     card_layouts: &[Layout],
     cards_per_row: usize,
 ) {
+    // Mouse scrolling
+    if let Some(last) = card_layouts.last() {
+        let max_height = layout.height as i32;
+        let card_height = last.y + last.height as i32;
+        if app.mouse_scroll_y < 0.0 && card_height > max_height {
+            let overflow = (max_height - card_height - app.mouse_scroll_y as i32).max(0);
+            app.main_scroll = app.main_scroll + app.mouse_scroll_y as i32 + overflow;
+        }
+    }
+
+    if let Some(first) = card_layouts.first() {
+        let min_height = CARD_Y_PAD_OUTER;
+        if app.mouse_scroll_y > 0.0 && first.y < min_height {
+            app.main_scroll = (app.main_scroll + app.mouse_scroll_y as i32).min(min_height);
+        }
+    }
+
     if app.main_search_anime.is_none() {
         if app.keydown(Keycode::J) {
             if let Some(last) = card_layouts.last() {
-                if last.y + last.height as i32 > window_height as i32 {
-                    app.main_scroll -= 40;
+                let max_height = layout.height as i32;
+                let card_height = last.y + last.height as i32;
+                if card_height > max_height {
+                    let overflow = (max_height - card_height + 40).max(0);
+                    app.main_scroll = app.main_scroll - 40 + overflow;
                 }
             }
         } else if app.keydown(Keycode::K) {
@@ -261,25 +281,21 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
     false
 }
 
-pub fn draw_main(app: &mut App) {
+pub fn draw_main(app: &mut App, layout: Layout) {
     let (window_width, window_height) = app.canvas.window().size();
+    //let (toolbar_layout, layout) = Layout::new(0, 0, window_width, window_height).split_hori(text_height, window_height);
     let (card_layouts, scrollbar_layout) =
-        Layout::new(0, 0, window_width, window_height).split_vert(796, 800);
+        layout.split_vert(796, 800);
 
     let (cards_per_row, card_layouts) = card_layouts
         .pad_top(CARD_Y_PAD_OUTER)
         .pad_bottom(CARD_Y_PAD_OUTER)
         .scroll_y(app.main_scroll)
-        .split_grid_center(
-            CARD_WIDTH,
-            CARD_HEIGHT,
-            CARD_X_PAD_INNER,
-            CARD_Y_PAD_INNER,
-        );
+        .split_grid_center(CARD_WIDTH, CARD_HEIGHT, CARD_X_PAD_INNER, CARD_Y_PAD_INNER);
     let card_layouts = card_layouts.take(app.database.len()).collect::<Vec<_>>();
 
     if app.main_search_anime.is_none() && app.main_alias_anime.is_none() {
-        handle_main_events(app, window_height, &card_layouts, cards_per_row);
+        handle_main_events(app, layout, &card_layouts, cards_per_row);
     } else {
         handle_main_search_events(app);
     }
