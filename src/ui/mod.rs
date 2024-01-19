@@ -106,6 +106,7 @@ pub struct Style {
     pub fg_hover_color: Color,
     pub bg_hover_color: Color,
     pub font_info: FontInfo,
+    pub round: Option<i16>,
 }
 
 pub struct MostlyStatic<'a> {
@@ -778,6 +779,7 @@ impl Style {
             fg_hover_color: fg_color,
             bg_hover_color: bg_color,
             font_info: DEFAULT_BUTTON_FONT_INFO,
+            round: Some(7),
         }
     }
 
@@ -793,6 +795,11 @@ impl Style {
 
     pub fn font_info(mut self, font_info: FontInfo) -> Self {
         self.font_info = font_info;
+        self
+    }
+
+    pub fn round(mut self, round: Option<i16>) -> Self {
+        self.round = round;
         self
     }
 }
@@ -814,17 +821,23 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
             (style.fg_color, style.bg_color)
         };
     app.canvas.set_draw_color(button_bg_color);
-    //app.canvas.fill_rect(button_rect).unwrap();
-    app.canvas
-        .rounded_box(
-            button_rect.left() as i16,
-            button_rect.top() as i16,
-            button_rect.right() as i16,
-            button_rect.bottom() as i16,
-            7,
-            button_bg_color
-        )
-        .unwrap();
+    match style.round {
+        Some(round) => {
+            app.canvas
+                .rounded_box(
+                    button_rect.left() as i16,
+                    button_rect.top() as i16,
+                    button_rect.right() as i16,
+                    button_rect.bottom() as i16,
+                    round,
+                    button_bg_color,
+                )
+                .unwrap();
+        }
+        None => {
+            app.canvas.fill_rect(button_rect).unwrap();
+        }
+    }
 
     draw_text_centered(
         &mut app.canvas,
