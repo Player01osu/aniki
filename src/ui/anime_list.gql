@@ -1,0 +1,15 @@
+query ($uid: Int) {
+    MediaListCollection(userId: $uid, type:ANIME) {
+        lists {
+            name
+            status
+            entries {
+                progress
+                updatedAt
+                media {
+                    id
+                }
+            }
+        }
+    }
+}

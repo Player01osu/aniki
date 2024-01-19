@@ -7,17 +7,17 @@ use sdl2::{
 
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
-    database,
-    rect,
+    database, rect,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
-use crate::Format;
+use crate::{ConnectionOverlayState, Format};
 
 use super::{
-    color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered,
-    text_size, Layout, Screen, Style, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
-    TITLE_FONT_COLOR, TITLE_FONT_INFO, draw_input_box, INPUT_BOX_FONT_INFO
+    color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
+    draw_text_centered, text_size, update_anilist_watched, Layout, Screen, Style,
+    INPUT_BOX_FONT_INFO, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR, TITLE_FONT_INFO,
+    TOOLBAR_FONT_COLOR, TOOLBAR_FONT_INFO,
 };
 
 pub const CARD_WIDTH: u32 = 200;
@@ -461,7 +461,12 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
     ) {
         clicked = true;
         open_url(&current_path[0]).unwrap();
-        anime.update_watched(current_ep).unwrap();
+        anime.update_watched(current_ep.clone()).unwrap();
+
+        if let Some(access_token) = app.database.anilist_access_token() {
+            update_anilist_watched(&app.mutex, access_token, anime);
+        }
+
         app.main_scroll = 0;
     }
 
@@ -476,6 +481,10 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
             open_url(&path[0]).unwrap();
             anime.update_watched(ep).unwrap();
             app.main_scroll = 0;
+
+            if let Some(access_token) = app.database.anilist_access_token() {
+                update_anilist_watched(&app.mutex, access_token, anime);
+            }
         }
     }
     clicked

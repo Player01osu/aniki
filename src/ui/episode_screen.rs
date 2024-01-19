@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered, Layout,
-    Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
+    draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered,
+    update_anilist_watched, Layout, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
     THUMBNAIL_MISSING_SIZE, TITLE_FONT, TITLE_FONT_COLOR,
 };
 
@@ -26,11 +26,7 @@ pub const DESCRIPTION_FONT_COLOR: u32 = TITLE_FONT_COLOR;
 pub const DIRECTORY_NAME_FONT_INFO: (&str, u16) = DESCRIPTION_FONT_INFO;
 pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 
-fn draw_episode_list(
-    app: &mut App,
-    anime: &database::Anime,
-    layout: Layout,
-) {
+fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
     app.canvas.set_clip_rect(layout.to_rect());
     let episode_height = 70;
     let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
@@ -253,6 +249,10 @@ fn draw_episode(
             let paths = anime.find_episode_path(&episode);
             app.episode_scroll = 0;
             open_url(&paths[0]).unwrap();
+
+            if let Some(access_token) = app.database.anilist_access_token() {
+                update_anilist_watched(&app.mutex, &access_token, anime);
+            }
         }
     }
     let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)));

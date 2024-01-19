@@ -1,0 +1,5 @@
+mutation ($mediaId: Int, $episode: Int) {
+    SaveMediaListEntry(mediaId: $mediaId, progress: $episode) {
+        id
+    }
+}

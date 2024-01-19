@@ -2,13 +2,20 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use crate::CONNECTION_OVERLAY_TIMEOUT;
 use crate::database;
+use crate::database::episode::Episode;
 use crate::database::Database;
+use crate::send_request;
 use crate::App;
+use crate::ConnectionOverlayState;
+use crate::HttpData;
+use crate::HttpMutex;
 use anyhow::Context;
 use anyhow::Result;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadSurface;
+use sdl2::keyboard;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Mod;
 use sdl2::pixels::Color;
@@ -24,6 +31,7 @@ use sdl2::video::WindowContext;
 
 use self::episode_screen::draw_anime_expand;
 use self::episode_screen::DESCRIPTION_FONT_INFO;
+use self::login_screen::draw_login;
 use self::main_screen::draw_main;
 use self::main_screen::CARD_HEIGHT;
 use self::main_screen::CARD_WIDTH;
@@ -32,9 +40,9 @@ use sdl2::image::ImageRWops;
 use sdl2::rect::Rect;
 use sdl2::rwops::RWops;
 
-mod episode_screen;
-
-mod main_screen;
+pub mod episode_screen;
+pub mod login_screen;
+pub mod main_screen;
 
 const DEBUG_COLOR: u32 = 0xFF0000;
 
@@ -58,6 +66,15 @@ pub const TITLE_FONT: &str = LIBERATION_FONT;
 pub const TITLE_FONT_PT: u16 = 16;
 pub const TITLE_FONT_INFO: (&str, u16) = (TITLE_FONT, TITLE_FONT_PT);
 pub const TITLE_FONT_COLOR: u32 = 0xABABAB;
+
+pub const CONNECTION_FONT: &str = TITLE_FONT;
+pub const CONNECTION_FONT_PT: u16 = 14;
+pub const CONNECTION_FONT_INFO: (&str, u16) = (CONNECTION_FONT, CONNECTION_FONT_PT);
+
+pub const TOOLBAR_FONT: &str = TITLE_FONT;
+pub const TOOLBAR_FONT_PT: u16 = 14;
+pub const TOOLBAR_FONT_INFO: (&str, u16) = (TOOLBAR_FONT, TOOLBAR_FONT_PT);
+pub const TOOLBAR_FONT_COLOR: u32 = 0xABABAB;
 
 pub const THUMBNAIL_MISSING_SIZE: (u32, u32) = (CARD_WIDTH, CARD_HEIGHT);
 
@@ -387,6 +404,7 @@ impl<'a> TextureManager<'a> {
 #[derive(Debug)]
 pub enum Screen {
     Main,
+    Login,
     SelectEpisode(*const database::Anime),
 }
 
@@ -578,6 +596,25 @@ fn color_hex_a_test_0() {
 }
 
 pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) {
+pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut database::Anime) {
+    if let Some(media_id) = anime.anilist_id() {
+        if let Episode::Numbered { episode, .. } = anime.current_episode() {
+            let anime_list_query = include_str!("update_anilist_media.gql");
+            let json = serde_json::json!({"query": anime_list_query, "variables": {"id": 15125, "mediaId": media_id, "episode": episode}});
+            let request = reqwest::Client::new()
+                .post("https://graphql.anilist.co")
+                .header("Authorization", format!("Bearer {access_token}"))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .body(json.to_string());
+            // TODO: Handle error
+            send_request(mutex, request, |res| async {
+                anyhow::Ok(HttpData::Debug(res.text().await?))
+            });
+        }
+    }
+}
+
     let font_info = INPUT_BOX_FONT_INFO;
     let pad_side = 5;
     let pad_height = 2;
@@ -891,13 +928,121 @@ fn dbg_layout(app: &mut App, layout: Layout) {
     app.canvas.draw_rect(layout.to_rect()).unwrap();
 }
 
+fn draw_connection_overlay_connected(app: &mut App) {
+    let (_, text_height) = app
+        .text_manager
+        .text_size(CONNECTION_FONT_INFO, "Connected");
+    let (width, height) = app.canvas.window().size();
+    let layout = Layout::new(0, (height - text_height) as i32, width, height);
+    app.canvas.set_draw_color(color_hex(0x006600));
+    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    draw_text_centered(
+        &mut app.canvas,
+        &mut app.text_manager,
+        CONNECTION_FONT_INFO,
+        "Connected",
+        color_hex(0xDADADA),
+        (width / 2) as i32,
+        (height - text_height / 2) as i32,
+        None,
+        None,
+    );
+}
+
+fn draw_connection_overlay_disconnected(app: &mut App) {
+    let (_, text_height) = app
+        .text_manager
+        .text_size(CONNECTION_FONT_INFO, "Disconnected");
+    let (width, height) = app.canvas.window().size();
+    let layout = Layout::new(0, (height - text_height) as i32, width, height);
+    app.canvas.set_draw_color(color_hex(0x101010));
+    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    draw_text_centered(
+        &mut app.canvas,
+        &mut app.text_manager,
+        CONNECTION_FONT_INFO,
+        "Disconnected",
+        color_hex(0xDADADA),
+        (width / 2) as i32,
+        (height - text_height / 2) as i32,
+        None,
+        None,
+    );
+}
+
+fn draw_toolbar(app: &mut App, layout: Layout) {
+    let toolbar_button_side_pad = 25;
+    let toolbar_button_style = Style::new(color_hex(0x909090), color_hex(0x202020))
+        .bg_hover_color(color_hex(TOOLBAR_FONT_COLOR))
+        .font_info(TOOLBAR_FONT_INFO)
+        .round(None);
+
+    app.canvas.set_draw_color(color_hex(0x0B0B0B));
+    app.canvas.fill_rect(layout.to_rect()).unwrap();
+
+    // Draw login button
+    let layout = {
+        let text = match app.connection_overlay.state {
+            ConnectionOverlayState::Disconnected => "Login",
+            ConnectionOverlayState::Connected => "Logout",
+        };
+        let (login_width, _) = app.text_manager.text_size(TOOLBAR_FONT_INFO, text);
+        let login_width = login_width + toolbar_button_side_pad;
+        let (layout, login_button_layout) =
+        layout.split_vert(layout.width - login_width, layout.width);
+        if draw_button(app, text, toolbar_button_style, login_button_layout) {
+            match app.connection_overlay.state {
+                ConnectionOverlayState::Disconnected => {
+                    app.next_screen = Some(Screen::Login);
+                    return;
+                }
+                ConnectionOverlayState::Connected => {
+                    app.connection_overlay.state = ConnectionOverlayState::Disconnected;
+                    app.connection_overlay.timeout = CONNECTION_OVERLAY_TIMEOUT;
+                    app.database.anilist_clear();
+                }
+            }
+        };
+        layout
+    };
+}
+
+
 pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
+    let (window_width, window_height) = app.canvas.window().size();
+    let (_, text_height) = app.text_manager.text_size(TOOLBAR_FONT_INFO, "W");
+    if app.keycode_map.is_empty() && app.keymod.contains(keyboard::Mod::LALTMOD) {
+        app.keymod.remove(keyboard::Mod::LALTMOD);
+        app.show_toolbar = !app.show_toolbar;
+    };
+
+    let layout = if app.show_toolbar {
+        let (toolbar_layout, layout) = Layout::new(0, 0, window_width, window_height).split_hori(text_height, window_height);
+        draw_toolbar(app, toolbar_layout);
+        layout
+    } else {
+        Layout::new(0, 0, window_width, window_height)
+    };
+
     match screen {
-        Screen::Main => draw_main(app),
+        Screen::Login => draw_login(app),
+        Screen::Main => draw_main(app, layout),
         Screen::SelectEpisode(anime) => {
             // Anime reference will never get changed while drawing frame
             let anime = unsafe { &**anime };
             draw_anime_expand(app, anime);
+        }
+    }
+
+    if app.connection_overlay.timeout > 0 {
+        app.connection_overlay.timeout -= 1;
+        match app.connection_overlay.state {
+            ConnectionOverlayState::Connected => {
+                draw_connection_overlay_connected(app);
+            }
+            ConnectionOverlayState::Disconnected => {
+                draw_connection_overlay_disconnected(app);
+            }
         }
     }
 

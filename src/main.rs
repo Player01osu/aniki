@@ -1,8 +1,9 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
+use anilist_serde::{MediaList, Viewer};
 use config::Config;
 use database::json_database::AnimeDatabaseData;
-use database::Database;
+use database::{AniListCred, Database};
 use reqwest::RequestBuilder;
 use sdl2::clipboard::ClipboardUtil;
 use sdl2::keyboard;
@@ -20,14 +21,16 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use ui::FontManager;
+use ui::login_screen::{get_anilist_media_list, send_login};
 use ui::Screen;
 use ui::TextManager;
 use ui::TextureManager;
 use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
 use ui::{color_hex, draw, BACKGROUND_COLOR};
+use ui::{update_anilist_watched, FontManager};
 
+mod anilist_serde;
 mod config;
 mod database;
 mod ui;
@@ -36,6 +39,7 @@ const MOUSE_CLICK_LEFT: u8 = 0x00000001;
 const MOUSE_CLICK_RIGHT: u8 = 0x00000002;
 const MOUSE_MOVED: u8 = 0x00000004;
 const RESIZED: u8 = 0x00000008;
+pub const CONNECTION_OVERLAY_TIMEOUT: u16 = 60;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Format {
@@ -67,6 +71,18 @@ impl StringManager {
     }
 }
 
+#[derive(Debug)]
+pub struct ConnectionOverlay {
+    timeout: u16,
+    state: ConnectionOverlayState,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ConnectionOverlayState {
+    Connected,
+    Disconnected,
+}
+
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
     pub clipboard: ClipboardUtil,
@@ -78,10 +94,14 @@ pub struct App<'a, 'b> {
     pub thumbnail_path: String,
     pub database: Database<'a>,
     pub running: bool,
+    pub show_toolbar: bool,
 
     pub mutex: HttpMutex,
 
     pub id: u32,
+
+    pub connection_overlay: ConnectionOverlay,
+    pub login_progress: LoginProgress,
 
     pub main_scroll: i32,
     pub main_selected: Option<usize>,
@@ -130,8 +150,16 @@ impl<'a, 'b> App<'a, 'b> {
             running: true,
             thumbnail_path,
 
+            show_toolbar: true,
+
             id: 0,
             mutex: Arc::new(Mutex::new(vec![])),
+
+            login_progress: LoginProgress::None,
+            connection_overlay: ConnectionOverlay {
+                timeout: CONNECTION_OVERLAY_TIMEOUT,
+                state: ConnectionOverlayState::Disconnected,
+            },
 
             main_scroll: 0,
             main_selected: None,
@@ -238,18 +266,61 @@ fn release_lock_file() -> anyhow::Result<()> {
 
 type HttpMutex = Arc<Mutex<Vec<HttpData>>>;
 
+pub enum LoginProgress {
+    None,
+    Started,
+    Failed,
+}
+
+fn sync_to_anilist(mutex: &HttpMutex, access_token: &str, animes: &mut [&mut database::Anime]) {
+    for anime in animes {
+        update_anilist_watched(mutex, access_token, *anime);
+    }
+}
+
 fn poll_http(app: &mut App) {
     let mutex = &app.mutex;
     if let Ok(ref mut lock) = mutex.try_lock() {
         for data in lock.drain(..) {
             match data {
-                _ => unimplemented!(),
+                HttpData::Viewer(viewer, access_token) => match viewer {
+                    Viewer::Ok(id) => {
+                        app.database
+                            .anilist_cred_set(Some(AniListCred::new(id, access_token)));
+                        app.login_progress = LoginProgress::None;
+                        app.connection_overlay.state = ConnectionOverlayState::Connected;
+                        app.connection_overlay.timeout = CONNECTION_OVERLAY_TIMEOUT;
+                    }
+                    Viewer::Err(_) => {
+                        app.login_progress = LoginProgress::Failed;
+                        app.text_input.clear();
+                    }
+                },
+                HttpData::MediaList(media_list) => match media_list {
+                    MediaList::Ok(collections) => {
+                        for collection in collections.iter() {
+                            let mut sync_newer = app.database.update_anilist_list(collection);
+
+                            if let Some(access_token) = app.database.anilist_access_token() {
+                                sync_to_anilist(mutex, access_token, &mut sync_newer);
+                            }
+                        }
+                        app.database.update_cached();
+                    }
+                    MediaList::Err(_) => {
+                        eprintln!("{}:{}:Oops", std::file!(), std::line!());
+                    }
+                },
+                HttpData::UpdateMedia => {}
+                HttpData::Debug(v) => {
+                    dbg!(v);
+                }
             }
         }
     }
 }
 
-fn send_request<Fut>(
+pub fn send_request<Fut>(
     mutex: &HttpMutex,
     request: RequestBuilder,
     f: impl FnOnce(reqwest::Response) -> Fut + Send + 'static,
@@ -268,7 +339,10 @@ fn send_request<Fut>(
 
 #[derive(Clone, Debug)]
 pub enum HttpData {
-    String(String),
+    Viewer(Viewer, String),
+    MediaList(MediaList),
+    UpdateMedia,
+    Debug(String),
 }
 
 #[tokio::main]
@@ -309,7 +383,15 @@ async fn main() -> anyhow::Result<()> {
     // TODO: Run this asynchronously and poll in draw loop
     let mut database = Database::new(database_path, video_paths)?;
     database.retrieve_images(&thumbnail_path)?;
-    let mut screen = Screen::Main;
+
+    let mut screen = {
+        if !database.skip_login() && database.anilist_cred().is_none() {
+            Screen::Login
+        } else {
+            Screen::Main
+        }
+    };
+
     let mut app = App::new(
         canvas,
         clipboard,
@@ -319,6 +401,11 @@ async fn main() -> anyhow::Result<()> {
         &texture_creator,
         thumbnail_path.to_string(),
     );
+
+    if let Some(cred) = app.database.anilist_cred() {
+        send_login(&app.mutex, cred.access_token());
+        get_anilist_media_list(&app.mutex, cred.user_id(), cred.access_token());
+    }
 
     app.canvas.clear();
     app.canvas.present();
