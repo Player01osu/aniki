@@ -123,6 +123,9 @@ pub struct App<'a, 'b> {
     pub text_input: String,
     pub mouse_x: i32,
     pub mouse_y: i32,
+    pub mouse_scroll_x: f32,
+    pub mouse_scroll_y: f32,
+    pub mouse_scroll_y_accel: f32,
     pub keycode_map: BTreeMap<u32, bool>,
     pub keymod: keyboard::Mod,
 }
@@ -175,6 +178,9 @@ impl<'a, 'b> App<'a, 'b> {
 
             mouse_x: 0,
             mouse_y: 0,
+            mouse_scroll_x: 0.0,
+            mouse_scroll_y: 0.0,
+            mouse_scroll_y_accel: 0.0,
 
             text_input: String::new(),
             keycode_map: BTreeMap::new(),
@@ -239,6 +245,9 @@ impl<'a, 'b> App<'a, 'b> {
         if self.mouse_moved() {
             self.main_keyboard_override = false;
         }
+
+        self.mouse_scroll_y_accel = self.mouse_scroll_y_accel / 1.9;
+        self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * 3.0 / 5.0;
 
         self.keycode_map.clear();
         self.state_flag = 0;
@@ -428,6 +437,15 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     app.mouse_click_left_true();
                 }
+                Event::MouseWheel {
+                    precise_x,
+                    precise_y,
+                    ..
+                } => {
+                    app.mouse_scroll_y_accel += 0.3;
+                    app.mouse_scroll_y += precise_y * 4.3;
+                    app.mouse_scroll_x += precise_x * 8.3;
+                }
                 Event::MouseButtonUp {
                     mouse_btn: sdl2::mouse::MouseButton::Right,
                     ..
@@ -472,14 +490,9 @@ async fn main() -> anyhow::Result<()> {
         draw(&mut app, &mut screen);
         app.canvas.present();
         fps.delay();
-        //if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
-        //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 3));
-        //}
-        //if app.canvas.window().has_input_focus() {
-        //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-        //} else {
-        //    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 3));
-        //}
+        if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
+            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 10));
+        }
     }
 
     release_lock_file()?;
