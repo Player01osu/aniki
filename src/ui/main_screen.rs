@@ -113,11 +113,7 @@ fn handle_main_search_events(app: &mut App) {
     }
 }
 
-fn draw_main_anime_search(
-    app: &mut App,
-    layout: Layout,
-    search_id: u32,
-) {
+fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
     let anime = &mut app.database.animes()[search_id as usize];
     let options = {
@@ -151,10 +147,7 @@ fn draw_main_anime_search(
         let option = unsafe { &**option };
         if draw_option(app, layout, &option.title()) {
             anime.set_metadata(Some((*option).clone()));
-            app
-                .database
-                .retrieve_images(&app.thumbnail_path)
-                .unwrap();
+            app.database.retrieve_images(&app.thumbnail_path).unwrap();
             app.main_search_anime = None;
             app.input_util.stop();
             return;
@@ -174,11 +167,7 @@ fn draw_main_anime_search(
     }
 }
 
-fn draw_main_anime_alias(
-    app: &mut App,
-    layout: Layout,
-    alias_id: u32,
-) {
+fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     let anime = &mut app.database.animes()[alias_id as usize];
     let (_, text_height) = app
         .text_manager
