@@ -153,7 +153,7 @@ impl<'a, 'b> App<'a, 'b> {
             running: true,
             thumbnail_path,
 
-            show_toolbar: true,
+            show_toolbar: false,
 
             id: 0,
             mutex: Arc::new(Mutex::new(vec![])),
