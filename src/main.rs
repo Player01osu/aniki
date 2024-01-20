@@ -18,6 +18,7 @@ use sdl2::{
 use std::collections::BTreeMap;
 use std::fs;
 use std::future::Future;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -257,8 +258,10 @@ impl<'a, 'b> App<'a, 'b> {
 
 fn lock_file() -> anyhow::Result<()> {
     match fs::read_to_string("/tmp/aniki.lock") {
-        Ok(v) => anyhow::bail!("Lock file exists! PID:{v}"),
-        Err(_) => {
+        Ok(v) if Path::new(&format!("/proc/{v}")).exists() => {
+            anyhow::bail!("Lock file exists! PID:{v}")
+        }
+        _ => {
             fs::write("/tmp/aniki.lock", std::process::id().to_string())?;
             Ok(())
         }
