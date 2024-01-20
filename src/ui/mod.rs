@@ -681,7 +681,6 @@ pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) -> bool {
     false
 }
 
-// TODO: Add filler image if image not found
 fn draw_image_clip(app: &mut App, path: impl AsRef<str>, layout: Layout) -> Result<()> {
     let texture = app
         .image_manager
@@ -710,7 +709,6 @@ fn draw_image_clip(app: &mut App, path: impl AsRef<str>, layout: Layout) -> Resu
     Ok(())
 }
 
-// TODO: Add filler image if image not found
 fn draw_image_float(
     app: &mut App,
     path: impl AsRef<str>,
