@@ -1,6 +1,6 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
-use anilist_serde::{MediaList, Viewer};
+use anilist_serde::{MediaList, Viewer, MediaEntry};
 use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::{AniListCred, Database};
@@ -320,7 +320,12 @@ fn poll_http(app: &mut App) {
                         eprintln!("{}:{}:Oops", std::file!(), std::line!());
                     }
                 },
-                HttpData::UpdateMedia => {}
+                HttpData::UpdateMedia(path, entry) => {
+                    let anime = app.database.animes().iter_mut().find(|v| v.path() == path).unwrap();
+                    if entry.updated_at() > anime.last_watched() {
+                        anime.set_last_watched(entry.updated_at());
+                    }
+                }
                 HttpData::Debug(v) => {
                     dbg!(v);
                 }
@@ -350,7 +355,7 @@ pub fn send_request<Fut>(
 pub enum HttpData {
     Viewer(Viewer, String),
     MediaList(MediaList),
-    UpdateMedia,
+    UpdateMedia(String /* path */, MediaEntry),
     Debug(String),
 }
 

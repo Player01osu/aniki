@@ -162,6 +162,10 @@ impl Anime {
         anime
     }
 
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
     pub fn metadata(&self) -> &Option<AnimeDatabaseData> {
         &self.metadata
     }
@@ -196,8 +200,12 @@ impl Anime {
         self.metadata = metadata;
     }
 
-    fn set_last_watched(&mut self, time: u64) {
+    pub fn set_last_watched(&mut self, time: u64) {
         self.last_watched = time;
+    }
+
+    pub fn last_watched(&self) -> u64 {
+        self.last_watched
     }
 
     fn set_progress(&mut self, progress: u32) {
@@ -696,7 +704,7 @@ impl<'a> Database<'a> {
             match anime.anilist_id() {
                 Some(anilist_id) if anilist_id == entry.id() => {
                     if anime.last_watched > entry.updated_at() {
-                        let anime = unsafe { &mut *(*anime as *mut _) };
+                        let anime = unsafe { &mut *(*anime as *mut Anime) };
                         vec.push(anime);
                         continue 'anime;
                     }

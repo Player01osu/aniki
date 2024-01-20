@@ -32,6 +32,31 @@ impl MediaList {
     }
 }
 
+impl MediaEntry {
+    pub fn deserialize_json(bytes: &[u8]) -> anyhow::Result<Self> {
+        match serde_json::from_slice::<__MediaEntry>(bytes)? {
+            __MediaEntry::Ok { data } => Ok(data.entry),
+            __MediaEntry::Err(_e) => anyhow::bail!("Media entry request failed"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+enum __MediaEntry {
+    Ok { data: SaveMediaListEntry },
+    Err(MediaEntryError),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct SaveMediaListEntry {
+    #[serde(rename = "SaveMediaListEntry")]
+    entry: MediaEntry,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+enum MediaEntryError {}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 enum __Viewer {

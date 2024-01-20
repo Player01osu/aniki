@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use crate::CONNECTION_OVERLAY_TIMEOUT;
+use crate::anilist_serde::MediaEntry;
 use crate::database;
 use crate::database::episode::Episode;
 use crate::database::Database;
@@ -607,8 +608,9 @@ pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut
                 .header("Accept", "application/json")
                 .body(json.to_string());
             // TODO: Handle error
-            send_request(mutex, request, |res| async {
-                anyhow::Ok(HttpData::Debug(res.text().await?))
+            let path = anime.path().to_string();
+            send_request(mutex, request, |res| async move {
+                anyhow::Ok(HttpData::UpdateMedia(path, MediaEntry::deserialize_json(&res.bytes().await?)?))
             });
         }
     }
