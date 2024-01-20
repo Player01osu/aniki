@@ -62,6 +62,7 @@ impl Config {
 
         // TODO: Windows support
         let base_dir_path = env_vars.xdg_cache();
+        #[allow(unused_variables)]
         let database_path = base_dir_path.join("aniki.db");
         let thumbnail_path = base_dir_path.join("thumbnails");
         let video_paths = vec![];
