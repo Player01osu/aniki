@@ -35,7 +35,7 @@ change anime
 
 <details> <summary>Sync with anime trackers</summary>
     <ul><li>
-    # <item><a href="https://anilist.co">Anilist</a>
+    <item><a href="https://anilist.co">Anilist</a>
     </li></ul>
 </details>
 
