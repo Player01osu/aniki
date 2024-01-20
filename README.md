@@ -43,7 +43,7 @@ change anime
 
 - Get synopsis from anilist/mal
 
-- Sync with anilist/mal
+- Sync with mal
 
 - Custom styling
 
