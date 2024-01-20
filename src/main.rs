@@ -1,6 +1,6 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
-use anilist_serde::{MediaList, Viewer, MediaEntry};
+use anilist_serde::{MediaEntry, MediaList, Viewer};
 use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::{AniListCred, Database};
@@ -8,6 +8,8 @@ use reqwest::RequestBuilder;
 use sdl2::clipboard::ClipboardUtil;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
+use sdl2::rect::Rect;
+use sdl2::render::Texture;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
 use sdl2::{
@@ -324,7 +326,12 @@ fn poll_http(app: &mut App) {
                     }
                 },
                 HttpData::UpdateMedia(path, entry) => {
-                    let anime = app.database.animes().iter_mut().find(|v| v.path() == path).unwrap();
+                    let anime = app
+                        .database
+                        .animes()
+                        .iter_mut()
+                        .find(|v| v.path() == path)
+                        .unwrap();
                     if entry.updated_at() > anime.last_watched() {
                         anime.set_last_watched(entry.updated_at());
                     }
@@ -365,8 +372,6 @@ pub enum HttpData {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     lock_file()?;
-    let mut fps = sdl2::gfx::framerate::FPSManager::new();
-    fps.set_framerate(30).unwrap();
     let cfg = Config::parse_cfg();
     let database_path = cfg.database_path().to_string_lossy();
     let thumbnail_path = cfg.thumbnail_path().to_string_lossy();
@@ -424,18 +429,24 @@ async fn main() -> anyhow::Result<()> {
         get_anilist_media_list(&app.mutex, cred.user_id(), cred.access_token());
     }
 
+    enum CanvasTexture<'a> {
+        Cached(Texture<'a>),
+        Wait(u32),
+    }
+
+    let idle_time = 100;
+    let mut canvas_texture = CanvasTexture::Wait(idle_time);
+
     app.canvas.clear();
     app.canvas.present();
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
-        poll_http(&mut app);
         if app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus() {
             app.reset_frame_state()
         }
-        app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
-        app.canvas.clear();
 
         for event in event_pump.poll_iter() {
+            canvas_texture = CanvasTexture::Wait(idle_time);
             match event {
                 Event::Quit { .. } => break 'running,
                 Event::MouseButtonDown { .. } => {}
@@ -495,11 +506,36 @@ async fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
-        draw(&mut app, &mut screen);
+
+        match canvas_texture {
+            CanvasTexture::Cached(ref texture) => {
+                app.canvas.copy(texture, None, None).unwrap();
+            }
+            CanvasTexture::Wait(ref mut t) => {
+                *t -= 1;
+                poll_http(&mut app);
+                app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
+                app.canvas.clear();
+                draw(&mut app, &mut screen);
+
+                if *t <= 0 {
+                    let (width, height) = app.canvas.window().size();
+                    let pixel_format = app.canvas.default_pixel_format();
+                    let pitch = pixel_format.byte_size_per_pixel() * width as usize;
+                    let rect = rect!(0, 0, width, height);
+
+                    let pixels = app.canvas.read_pixels(rect, pixel_format).unwrap();
+                    let mut texture = texture_creator
+                        .create_texture_static(pixel_format, width, height)
+                        .unwrap();
+                    texture.update(None, &pixels, pitch).unwrap();
+                    canvas_texture = CanvasTexture::Cached(texture);
+                }
+            }
+        }
         app.canvas.present();
-        fps.delay();
         if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 10));
+            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
         }
     }
 
