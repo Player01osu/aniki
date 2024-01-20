@@ -34,7 +34,9 @@ change anime
 <details> <summary>Media detection</summary> </details>
 
 <details> <summary>Sync with anime trackers</summary>
-    - [Anilist](https://anilist.co)
+    <li>
+        <item><a href="https://anilist.co">Anilist</a>
+    </li>
 </details>
 
 ### Coming Soon
