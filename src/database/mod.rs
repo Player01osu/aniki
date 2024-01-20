@@ -46,7 +46,6 @@ pub struct AniListCred {
 pub struct Database<'a> {
     anime_map: BTreeMap<Box<str>, Anime>,
     previous_update: Vec<(Box<str>, u64)>,
-    #[serde(default)]
     skip_login: bool,
     anilist_cred: Option<AniListCred>,
     #[serde(skip)]
