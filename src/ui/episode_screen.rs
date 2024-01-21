@@ -39,6 +39,23 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
         .take(episode_count)
         .collect::<Box<[Layout]>>();
 
+    // Mouse scrolling
+    if let Some(last) = layouts.last() {
+        let max_height = layout.height as i32;
+        let height = last.y + last.height as i32;
+        if app.mouse_scroll_y < 0.0 && height > max_height {
+            let overflow = (max_height - height - app.mouse_scroll_y as i32).max(0);
+            app.episode_scroll = app.episode_scroll + app.mouse_scroll_y as i32 + overflow;
+        }
+    }
+
+    if let Some(first) = layouts.first() {
+        let min_height = layout.y;
+        if app.mouse_scroll_y > 0.0 && first.y < min_height {
+            app.episode_scroll = (app.episode_scroll + app.mouse_scroll_y as i32).min(min_height);
+        }
+    }
+
     if app.keydown(Keycode::J) {
         if let Some(last) = layouts.last() {
             if last.y + last.height as i32 > layout.y + layout.height as i32 {
