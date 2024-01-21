@@ -26,6 +26,8 @@ pub const DESCRIPTION_FONT_COLOR: u32 = TITLE_FONT_COLOR;
 pub const DIRECTORY_NAME_FONT_INFO: (&str, u16) = DESCRIPTION_FONT_INFO;
 pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 
+const THUMBNAIL_RAD: i16 = 6;
+
 fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
     app.canvas.set_clip_rect(layout.to_rect());
     let episode_height = 70;
@@ -193,16 +195,16 @@ fn draw_top_panel_with_metadata(
 fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Layout) {
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
-            if let Ok((image_width, image_height)) = app.image_manager.query_size(thumbnail) {
+            if let Ok((image_width, image_height)) = app.image_manager.query_size(&mut app.canvas, thumbnail) {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height / image_height, layout.width);
-                let _ = draw_image_float(app, thumbnail, image_layout, None);
+                let _ = draw_image_float(app, thumbnail, image_layout, None, Some(THUMBNAIL_RAD), None);
                 description_layout.pad_outer(10, 10)
             } else {
                 let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height / image_height, layout.width);
-                draw_missing_thumbnail(app, image_layout);
+                draw_missing_thumbnail(app, image_layout, None);
                 description_layout.pad_outer(10, 10)
             }
         }
@@ -210,7 +212,7 @@ fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: L
             let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
             let (image_layout, description_layout) =
                 layout.split_vert(image_width * layout.height / image_height, layout.width);
-            draw_missing_thumbnail(app, image_layout);
+            draw_missing_thumbnail(app, image_layout, None);
             description_layout.pad_outer(10, 10)
         }
     };
@@ -231,7 +233,7 @@ fn draw_episode(
 ) {
     let (play_width, play_height) = app
         .image_manager
-        .query_size(PLAY_ICON)
+        .query_size(&mut app.canvas, PLAY_ICON)
         .expect("Failed to load image");
     let (play_layout, ep_name_layout) = layout
         .pad_outer(0, 5)
@@ -255,7 +257,7 @@ fn draw_episode(
             }
         }
     }
-    let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)));
+    let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)), None, None);
     draw_text(
         &mut app.canvas,
         &mut app.text_manager,

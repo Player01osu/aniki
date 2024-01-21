@@ -1,3 +1,4 @@
+use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 use sdl2::{
@@ -6,20 +7,21 @@ use sdl2::{
 };
 
 use crate::database::json_database::AnimeDatabaseData;
+use crate::Format;
 use crate::{
     database, rect,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
-use crate::{ConnectionOverlayState, Format};
 
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
-    draw_text_centered, text_size, update_anilist_watched, Layout, Screen, Style,
-    INPUT_BOX_FONT_INFO, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR, TITLE_FONT_INFO,
-    TOOLBAR_FONT_COLOR, TOOLBAR_FONT_INFO,
+    draw_text_centered, text_size, update_anilist_watched, Layout, Screen, Style, TextureOptions,
+    INPUT_BOX_FONT_INFO, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR,
+    TITLE_FONT_INFO, MISSING_THUMBNAIL, TITLE_HOVER_FONT_COLOR,
 };
 
+pub const CARD_RAD: i16 = 10;
 pub const CARD_WIDTH: u32 = 200;
 pub const CARD_HEIGHT: u32 = 300;
 const CARD_X_PAD_OUTER: i32 = 10;
@@ -273,8 +275,7 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
 pub fn draw_main(app: &mut App, layout: Layout) {
     let (window_width, window_height) = app.canvas.window().size();
     //let (toolbar_layout, layout) = Layout::new(0, 0, window_width, window_height).split_hori(text_height, window_height);
-    let (card_layouts, scrollbar_layout) =
-        layout.split_vert(796, 800);
+    let (card_layouts, scrollbar_layout) = layout.split_vert(796, 800);
 
     let (cards_per_row, card_layouts) = card_layouts
         .pad_top(CARD_Y_PAD_OUTER)
@@ -357,13 +358,35 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     }
 }
 
+pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradient: Option<i32>) {
+    let texture = app
+        .image_manager
+        .load(
+            &mut app.canvas,
+            MISSING_THUMBNAIL,
+            TextureOptions::new()
+                .ratio(Some((layout.width, layout.height)))
+                .rounded(rounded)
+                .gradient(gradient),
+        )
+        .unwrap();
+
+    app.canvas.set_blend_mode(BlendMode::Blend);
+    app.canvas
+        .copy(texture.as_ref(), None, layout.to_rect())
+        .unwrap();
+}
+
 fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
+    let gradient = Some(0);
+    let rad = Some(CARD_RAD);
     if let Some(path) = anime.thumbnail() {
-        if draw_image_clip(app, path, layout).is_ok() {
+        if draw_image_clip(app, path, layout, rad, gradient).is_ok() {
             return;
         }
     }
-    draw_missing_thumbnail(app, layout);
+    draw_missing_thumbnail(app, layout, rad);
+    draw_gradient(app, layout, rad, gradient);
 }
 
 fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
@@ -498,24 +521,36 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
 fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Layout) -> bool {
     // draw card background/border
     let mut selected = false;
-    let card_bg_color = color_hex(0x1C1C1C);
-    let card_fg_color = color_hex(TITLE_FONT_COLOR);
+    //let card_bg_color = color_hex(0x1C1C1C);
+    let mut card_fg_color = color_hex(TITLE_FONT_COLOR);
     let (text_width, text_height) = {
         let title = anime.display_title();
         text_size(&mut app.text_manager, TITLE_FONT_INFO, title)
     };
-    let (top_layout, text_layout) = layout.split_hori(layout.height - text_height, layout.height);
+    let (top_layout, text_layout) =
+        layout.split_hori(layout.height - text_height - 19, layout.height);
     let image_layout = layout;
 
     // draw thumbnail
     draw_thumbnail(app, anime, image_layout);
 
     if is_card_selected(app, layout, idx) {
+        card_fg_color = color_hex(TITLE_HOVER_FONT_COLOR);
         app.canvas.set_blend_mode(BlendMode::Blend);
         selected = true;
         app.main_selected = Some(idx);
-        app.canvas.set_draw_color(color_hex_a(0x303030AA));
-        app.canvas.fill_rect(image_layout.to_rect()).unwrap();
+        let image_hover_color = color_hex_a(0x1010108B);
+        let image_rect = image_layout.to_rect();
+        app.canvas
+            .rounded_box(
+                image_rect.left() as i16,
+                image_rect.top() as i16,
+                image_rect.right() as i16,
+                image_rect.bottom() as i16,
+                CARD_RAD,
+                image_hover_color,
+            )
+            .unwrap();
 
         if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
             draw_card_extra_menu(app, anime, top_layout, idx)
@@ -541,9 +576,6 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     }
 
     // draw title background
-    app.canvas.set_draw_color(card_bg_color);
-    app.canvas.fill_rect(text_layout.to_rect()).unwrap();
-
     let f = {
         || {
             if text_width > layout.width - 35 {
@@ -571,7 +603,6 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
 
     // draw title
     app.canvas.set_draw_color(card_fg_color);
-    app.canvas.draw_rect(text_layout.to_rect()).unwrap();
     draw_text_centered(
         &mut app.canvas,
         &mut app.text_manager,

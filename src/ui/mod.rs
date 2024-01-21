@@ -2,7 +2,6 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use crate::CONNECTION_OVERLAY_TIMEOUT;
 use crate::anilist_serde::MediaEntry;
 use crate::database;
 use crate::database::episode::Episode;
@@ -12,6 +11,7 @@ use crate::App;
 use crate::ConnectionOverlayState;
 use crate::HttpData;
 use crate::HttpMutex;
+use crate::CONNECTION_OVERLAY_TIMEOUT;
 use anyhow::Context;
 use anyhow::Result;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -20,6 +20,8 @@ use sdl2::keyboard;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Mod;
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::render::BlendMode;
 use sdl2::render::Canvas;
 use sdl2::render::Texture;
 use sdl2::render::TextureCreator;
@@ -55,18 +57,25 @@ pub const BACKGROUND_COLOR: u32 = 0x1A1B25;
 const LIBERATION_FONT_BYTES: &[u8] =
     include_bytes!(r"../../fonts/liberation-fonts-ttf-2.1.5/LiberationSans-Regular.ttf");
 
+const NOTO_FONT_BYTES: &[u8] = include_bytes!(r"../../fonts/NotoSansCJKjp-Regular.otf");
+
 const PLAY_ICON: &str = "0";
 const PLAY_ICON_IMAGE: &[u8] = include_bytes!(r"../../assets/play-icon.svg");
+
+pub const MISSING_THUMBNAIL: &str = "1";
+const MISSING_THUMBNAIL_IMAGE: &[u8] = include_bytes!(r"../../assets/missing-thumbnail.png");
 
 const SCROLLBAR_COLOR: u32 = 0x2A2A2A;
 
 const LIBERATION_FONT: &str = "0";
+const NOTO_FONT: &str = "1";
 
 //const TITLE_FONT: &'static str = r"./fonts/OpenSans/OpenSans-VariableFont_wdth,wght.ttf";
 pub const TITLE_FONT: &str = LIBERATION_FONT;
-pub const TITLE_FONT_PT: u16 = 16;
+pub const TITLE_FONT_PT: u16 = 19;
 pub const TITLE_FONT_INFO: (&str, u16) = (TITLE_FONT, TITLE_FONT_PT);
-pub const TITLE_FONT_COLOR: u32 = 0xABABAB;
+pub const TITLE_FONT_COLOR: u32 = 0xCBCBCB;
+pub const TITLE_HOVER_FONT_COLOR: u32 = 0x8F8F8F;
 
 pub const CONNECTION_FONT: &str = TITLE_FONT;
 pub const CONNECTION_FONT_PT: u16 = 14;
@@ -139,7 +148,7 @@ pub struct Layout {
     height: u32,
 }
 
-type ImageData = (String, Option<(WidthRatio, HeightRatio)>);
+type ImageData = (String, TextureOptions);
 
 pub struct TextureManager<'a> {
     texture_creator: &'a TextureCreator<WindowContext>,
@@ -201,6 +210,10 @@ impl<'a, 'b> FontManager<'a, 'b> {
                     LIBERATION_FONT => self
                         .ttf_ctx
                         .load_font_from_rwops(RWops::from_bytes(LIBERATION_FONT_BYTES).unwrap(), pt)
+                        .unwrap(),
+                    NOTO_FONT => self
+                        .ttf_ctx
+                        .load_font_from_rwops(RWops::from_bytes(NOTO_FONT_BYTES).unwrap(), pt)
                         .unwrap(),
                     _ => self.ttf_ctx.load_font(font, pt).unwrap(),
                 };
@@ -301,6 +314,120 @@ impl<'a, 'b> TextManager<'a, 'b> {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq)]
+pub struct TextureOptions {
+    crop_pos: Option<(i32, i32)>,
+    ratio: Option<(u32, u32)>,
+    rounded: Option<i16>,
+    gradient: Option<i32>,
+}
+
+impl TextureOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn crop_pos(mut self, crop_pos: Option<(i32, i32)>) -> Self {
+        self.crop_pos = crop_pos;
+        self
+    }
+
+    pub fn ratio(mut self, ratio: Option<(u32, u32)>) -> Self {
+        self.ratio = ratio;
+        self
+    }
+
+    pub fn rounded(mut self, rounded: Option<i16>) -> Self {
+        self.rounded = rounded;
+        self
+    }
+
+    pub fn gradient(mut self, gradient: Option<i32>) -> Self {
+        self.gradient = gradient;
+        self
+    }
+}
+
+fn texture_modify<'a>(
+    canvas: &mut Canvas<Window>,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    image_texture: Texture<'a>,
+    options: TextureOptions,
+) -> Texture<'a> {
+    let TextureQuery { width, height, .. } = image_texture.query();
+    let mut texture = texture_creator
+        .create_texture_target(PixelFormatEnum::ARGB8888, width, height)
+        .unwrap();
+    texture.set_blend_mode(BlendMode::Blend);
+    let mut intemediary_texture = texture_creator
+        .create_texture_target(PixelFormatEnum::ARGB8888, width, height)
+        .unwrap();
+    canvas
+        .with_texture_canvas(&mut intemediary_texture, |texture_canvas| {
+            texture_canvas
+                .copy(&image_texture, None, Rect::new(0, 0, width, height))
+                .unwrap();
+            if let Some(gradient) = options.gradient {
+                texture_canvas.set_blend_mode(BlendMode::Blend);
+                let height_offset = gradient as i32;
+                texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 255));
+                if height_offset > 0 {
+                    texture_canvas
+                        .fill_rect(Rect::new(
+                            0,
+                            height as i32 - height_offset,
+                            width,
+                            height_offset as u32,
+                        ))
+                        .unwrap();
+                }
+
+                for i in 0..255u8 {
+                    let height_pos = -height_offset + height.saturating_sub(i as u32) as i32;
+                    texture_canvas.set_draw_color(Color::RGBA(
+                        0,
+                        0,
+                        0,
+                        (255u8.saturating_sub((i as u32).saturating_mul(5).saturating_div(3).clamp(0, 255) as u8)).saturating_sub(0),
+                    ));
+                    texture_canvas
+                        .fill_rect(Rect::new(0, height_pos, width, 1))
+                        .unwrap();
+                }
+            }
+        })
+        .unwrap();
+    let mut image_texture = intemediary_texture;
+    image_texture.set_blend_mode(BlendMode::Blend);
+
+    match options.rounded {
+        Some(rad) => {
+            let TextureQuery { format, .. } = texture.query();
+            assert!(format.supports_alpha());
+            canvas
+                .with_texture_canvas(&mut texture, |texture_canvas| {
+                    texture_canvas
+                        .rounded_box(
+                            0,
+                            0,
+                            width as i16,
+                            height as i16,
+                            rad,
+                            Color::RGBA(0, 0, 0, 255),
+                        )
+                        .unwrap();
+                    image_texture.set_blend_mode(BlendMode::Add);
+                    texture_canvas
+                        .copy(&image_texture, None, Rect::new(0, 0, width, height))
+                        .unwrap();
+                })
+                .unwrap();
+            texture
+        }
+        None => image_texture,
+    }
+}
+
 impl<'a> TextureManager<'a> {
     pub fn new(texture_creator: &'a TextureCreator<WindowContext>) -> Self {
         Self {
@@ -311,16 +438,16 @@ impl<'a> TextureManager<'a> {
 
     pub fn load(
         &mut self,
+        canvas: &mut Canvas<Window>,
         path: impl AsRef<str>,
-        crop_pos: Option<(i32, i32)>,
-        ratio: Option<(u32, u32)>,
+        options: TextureOptions,
     ) -> Result<Rc<Texture<'a>>> {
         // TODO: Anti-aliasing for images.
         //
         // I want images to be blurred bilinearly since they currently have little
         // pre-processing done prior to scaling down and bliting onto canvas.
 
-        match self.cache.entry((path.as_ref().to_string(), ratio)) {
+        match self.cache.entry((path.as_ref().to_string(), options)) {
             Entry::Occupied(v) => Ok(Rc::clone(v.get())),
             Entry::Vacant(v) => {
                 let raw_img = match path.as_ref() {
@@ -328,14 +455,20 @@ impl<'a> TextureManager<'a> {
                         .expect("Failed to load binary image")
                         .load()
                         .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    MISSING_THUMBNAIL => RWops::from_bytes(MISSING_THUMBNAIL_IMAGE)
+                        .expect("Failed to load binary image")
+                        .load()
+                        .map_err(|e| anyhow::anyhow!("{e}"))?,
                     path => Surface::from_file(path)
                         .map_err(|e| anyhow::anyhow!("{e}"))
                         .with_context(|| "Could not load iamge")?,
                 };
-                match ratio {
+
+                let texture = match options.ratio {
                     Some((width_ratio, height_ratio)) => {
                         let (raw_width, raw_height) = raw_img.size();
-                        let (width_scale, height_scale) = if (raw_width as f32 / raw_height as f32)
+                        let (width_scale, height_scale, scale) = if (raw_width as f32
+                            / raw_height as f32)
                             < (width_ratio as f32 / height_ratio as f32)
                         {
                             (
@@ -343,6 +476,7 @@ impl<'a> TextureManager<'a> {
                                 height_ratio as f32 * raw_width as f32
                                     / width_ratio as f32
                                     / raw_height as f32,
+                                width_ratio as f32 / raw_width as f32,
                             )
                         } else {
                             (
@@ -350,9 +484,10 @@ impl<'a> TextureManager<'a> {
                                     / height_ratio as f32
                                     / raw_width as f32,
                                 1.0,
+                                height_ratio as f32 / raw_height as f32,
                             )
                         };
-                        let crop = match crop_pos {
+                        let crop = match options.crop_pos {
                             Some((x_crop, y_crop)) => {
                                 rect!(
                                     x_crop,
@@ -363,12 +498,10 @@ impl<'a> TextureManager<'a> {
                             }
                             None => Rect::from_center(
                                 (raw_width as i32 / 2, raw_height as i32 / 2),
-                                (raw_width as f32 * width_scale) as u32,
-                                (raw_height as f32 * height_scale) as u32,
+                                (raw_width as f32 * width_scale * scale) as u32,
+                                (raw_height as f32 * height_scale * scale) as u32,
                             ),
                         };
-                        assert!(crop.height() <= raw_height);
-                        assert!(crop.width() <= raw_width);
                         let mut surface =
                             Surface::new(crop.width(), crop.height(), raw_img.pixel_format_enum())
                                 .unwrap();
@@ -377,27 +510,30 @@ impl<'a> TextureManager<'a> {
                         surface
                             .set_blend_mode(sdl2::render::BlendMode::Blend)
                             .unwrap();
-                        let texture = surface.as_texture(self.texture_creator).unwrap();
-                        let texture = Rc::new(texture);
-                        v.insert(Rc::clone(&texture));
-                        Ok(texture)
+                        surface.as_texture(self.texture_creator).unwrap()
                     }
                     None => {
-                        let texture = self
-                            .texture_creator
+                        self.texture_creator
                             .create_texture_from_surface(raw_img)
-                            .unwrap();
-                        let texture = Rc::new(texture);
-                        v.insert(Rc::clone(&texture));
-                        Ok(texture)
+                            .unwrap()
                     }
-                }
+                };
+
+                let texture = texture_modify(canvas, self.texture_creator, texture, options);
+                let texture = Rc::new(texture);
+                v.insert(Rc::clone(&texture));
+                Ok(texture)
             }
         }
     }
 
-    pub fn query_size(&mut self, path: impl AsRef<str>) -> Result<(u32, u32)> {
-        let TextureQuery { width, height, .. } = self.load(path, None, None)?.query();
+    pub fn query_size(
+        &mut self,
+        canvas: &mut Canvas<Window>,
+        path: impl AsRef<str>,
+    ) -> Result<(u32, u32)> {
+        let TextureQuery { width, height, .. } =
+            self.load(canvas, path, TextureOptions::default())?.query();
         Ok((width, height))
     }
 }
@@ -610,7 +746,10 @@ pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut
             // TODO: Handle error
             let path = anime.path().to_string();
             send_request(mutex, request, |res| async move {
-                anyhow::Ok(HttpData::UpdateMedia(path, MediaEntry::deserialize_json(&res.bytes().await?)?))
+                anyhow::Ok(HttpData::UpdateMedia(
+                    path,
+                    MediaEntry::deserialize_json(&res.bytes().await?)?,
+                ))
             });
         }
     }
@@ -681,15 +820,27 @@ pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) -> bool {
     false
 }
 
-fn draw_image_clip(app: &mut App, path: impl AsRef<str>, layout: Layout) -> Result<()> {
-    let texture = app
-        .image_manager
-        .load(path, None, Some((layout.width, layout.height)))?;
+fn draw_image_clip(
+    app: &mut App,
+    path: impl AsRef<str>,
+    layout: Layout,
+    rounded: Option<i16>,
+    gradient: Option<i32>,
+) -> Result<()> {
+    let texture = app.image_manager.load(
+        &mut app.canvas,
+        path,
+        TextureOptions::new()
+            .ratio(Some((layout.width, layout.height)))
+            .rounded(rounded)
+            .gradient(gradient),
+    )?;
     let TextureQuery {
         width: mut image_width,
         height: mut image_height,
         ..
     } = texture.query();
+
     let scaling =
         if image_width as i32 - layout.width as i32 > image_height as i32 - layout.height as i32 {
             image_width as f32 / layout.width as f32
@@ -699,6 +850,7 @@ fn draw_image_clip(app: &mut App, path: impl AsRef<str>, layout: Layout) -> Resu
     image_width = (image_width as f32 / scaling) as u32;
     image_height = (image_height as f32 / scaling) as u32;
 
+    app.canvas.set_blend_mode(BlendMode::Blend);
     app.canvas
         .copy(
             &texture,
@@ -714,8 +866,15 @@ fn draw_image_float(
     path: impl AsRef<str>,
     layout: Layout,
     padding: Option<(i32, i32)>,
+    rounded: Option<i16>,
+    gradient: Option<i32>,
 ) -> Result<()> {
-    let texture = app.image_manager.load(path, None, None)?;
+    app.canvas.set_blend_mode(BlendMode::Blend);
+    let texture = app.image_manager.load(
+        &mut app.canvas,
+        path,
+        TextureOptions::new().rounded(rounded).gradient(gradient),
+    )?;
     let TextureQuery {
         width: mut image_width,
         height: mut image_height,
@@ -746,6 +905,7 @@ fn draw_image_float(
             image_height,
         ),
     };
+    app.canvas.set_blend_mode(BlendMode::Blend);
     app.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
     Ok(())
 }
@@ -910,9 +1070,24 @@ fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
     }
 }
 
-pub fn draw_missing_thumbnail(app: &mut App, layout: Layout) {
-    app.canvas.set_draw_color(color_hex(0x9A9A9A));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16>) {
+    let bg_color = color_hex(0x9A9A9A);
+    if let Some(rounded) = rounded {
+        let rect = layout.to_rect();
+        app.canvas
+            .rounded_box(
+                rect.left() as i16,
+                rect.top() as i16,
+                rect.right() as i16 - 1,
+                rect.bottom() as i16 - 1,
+                rounded,
+                bg_color,
+            )
+            .unwrap();
+    } else {
+        app.canvas.set_draw_color(bg_color);
+        app.canvas.fill_rect(layout.to_rect()).unwrap();
+    }
     draw_text_centered(
         &mut app.canvas,
         &mut app.text_manager,
