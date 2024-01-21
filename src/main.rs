@@ -461,8 +461,8 @@ async fn main() -> anyhow::Result<()> {
                     precise_y,
                     ..
                 } => {
-                    app.mouse_scroll_y_accel += 0.3;
-                    app.mouse_scroll_y += precise_y * 4.3;
+                    app.mouse_scroll_y_accel += 0.6;
+                    app.mouse_scroll_y += precise_y * 7.3;
                     app.mouse_scroll_x += precise_x * 8.3;
                 }
                 Event::MouseButtonUp {
