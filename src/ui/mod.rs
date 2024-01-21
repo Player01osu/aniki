@@ -467,7 +467,7 @@ impl<'a> TextureManager<'a> {
                 let texture = match options.ratio {
                     Some((width_ratio, height_ratio)) => {
                         let (raw_width, raw_height) = raw_img.size();
-                        let (width_scale, height_scale, scale) = if (raw_width as f32
+                        let (width_scale, height_scale) = if (raw_width as f32
                             / raw_height as f32)
                             < (width_ratio as f32 / height_ratio as f32)
                         {
@@ -476,7 +476,6 @@ impl<'a> TextureManager<'a> {
                                 height_ratio as f32 * raw_width as f32
                                     / width_ratio as f32
                                     / raw_height as f32,
-                                width_ratio as f32 / raw_width as f32,
                             )
                         } else {
                             (
@@ -484,7 +483,6 @@ impl<'a> TextureManager<'a> {
                                     / height_ratio as f32
                                     / raw_width as f32,
                                 1.0,
-                                height_ratio as f32 / raw_height as f32,
                             )
                         };
                         let crop = match options.crop_pos {
@@ -498,10 +496,11 @@ impl<'a> TextureManager<'a> {
                             }
                             None => Rect::from_center(
                                 (raw_width as i32 / 2, raw_height as i32 / 2),
-                                (raw_width as f32 * width_scale * scale) as u32,
-                                (raw_height as f32 * height_scale * scale) as u32,
+                                (raw_width as f32 * width_scale) as u32,
+                                (raw_height as f32 * height_scale) as u32,
                             ),
                         };
+
                         let mut surface =
                             Surface::new(crop.width(), crop.height(), raw_img.pixel_format_enum())
                                 .unwrap();
