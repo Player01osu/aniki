@@ -992,7 +992,7 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
         let (login_width, _) = app.text_manager.text_size(TOOLBAR_FONT_INFO, text);
         let login_width = login_width + toolbar_button_side_pad;
         let (layout, login_button_layout) =
-        layout.split_vert(layout.width - login_width, layout.width);
+            layout.split_vert(layout.width - login_width, layout.width);
         if draw_button(app, text, toolbar_button_style, login_button_layout) {
             match app.connection_overlay.state {
                 ConnectionOverlayState::Disconnected => {
@@ -1010,7 +1010,6 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
     };
 }
 
-
 pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     let (window_width, window_height) = app.canvas.window().size();
     let (_, text_height) = app.text_manager.text_size(TOOLBAR_FONT_INFO, "W");
@@ -1019,12 +1018,12 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
         app.show_toolbar = !app.show_toolbar;
     };
 
-    let layout = if app.show_toolbar {
-        let (toolbar_layout, layout) = Layout::new(0, 0, window_width, window_height).split_hori(text_height, window_height);
-        draw_toolbar(app, toolbar_layout);
-        layout
+    let (toolbar_layout, layout) = if app.show_toolbar {
+        let (toolbar_layout, layout) =
+            Layout::new(0, 0, window_width, window_height).split_hori(text_height, window_height);
+        (Some(toolbar_layout), layout)
     } else {
-        Layout::new(0, 0, window_width, window_height)
+        (None, Layout::new(0, 0, window_width, window_height))
     };
 
     match screen {
@@ -1047,6 +1046,10 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
                 draw_connection_overlay_disconnected(app);
             }
         }
+    }
+
+    if let Some(toolbar_layout) = toolbar_layout {
+        draw_toolbar(app, toolbar_layout);
     }
 
     if let Some(next_screen) = app.next_screen.take() {
