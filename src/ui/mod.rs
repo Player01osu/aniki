@@ -400,6 +400,7 @@ fn texture_modify<'a>(
     let mut image_texture = intemediary_texture;
     image_texture.set_blend_mode(BlendMode::Blend);
 
+    // TODO: Scaling large images causes rounded corners to decrease
     match options.rounded {
         Some(rad) => {
             let TextureQuery { format, .. } = texture.query();
