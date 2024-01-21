@@ -41,7 +41,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
 
     // Mouse scrolling
     if let Some(last) = layouts.last() {
-        let max_height = layout.height as i32;
+        let max_height = layout.height as i32 + layout.y;
         let height = last.y + last.height as i32;
         if app.mouse_scroll_y < 0.0 && height > max_height {
             let overflow = (max_height - height - app.mouse_scroll_y as i32).max(0);
@@ -52,7 +52,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
     if let Some(first) = layouts.first() {
         let min_height = layout.y;
         if app.mouse_scroll_y > 0.0 && first.y < min_height {
-            app.episode_scroll = (app.episode_scroll + app.mouse_scroll_y as i32).min(min_height);
+            app.episode_scroll = (app.episode_scroll + app.mouse_scroll_y as i32).min(0);
         }
     }
 
