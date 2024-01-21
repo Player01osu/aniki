@@ -42,7 +42,7 @@ const MOUSE_CLICK_LEFT: u8 = 0x00000001;
 const MOUSE_CLICK_RIGHT: u8 = 0x00000002;
 const MOUSE_MOVED: u8 = 0x00000004;
 const RESIZED: u8 = 0x00000008;
-pub const CONNECTION_OVERLAY_TIMEOUT: u16 = 60;
+pub const CONNECTION_OVERLAY_TIMEOUT: u16 = 210;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Format {
