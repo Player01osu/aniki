@@ -250,7 +250,7 @@ impl<'a, 'b> App<'a, 'b> {
         }
 
         self.mouse_scroll_y_accel = self.mouse_scroll_y_accel / 1.9;
-        self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * 3.0 / 5.0;
+        self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * 4.7 / 5.8;
 
         self.keycode_map.clear();
         self.state_flag = 0;
@@ -461,8 +461,8 @@ async fn main() -> anyhow::Result<()> {
                     precise_y,
                     ..
                 } => {
-                    app.mouse_scroll_y_accel += 0.6;
-                    app.mouse_scroll_y += precise_y * 7.3;
+                    app.mouse_scroll_y_accel += 0.4;
+                    app.mouse_scroll_y += precise_y * 11.8;
                     app.mouse_scroll_x += precise_x * 8.3;
                 }
                 Event::MouseButtonUp {
