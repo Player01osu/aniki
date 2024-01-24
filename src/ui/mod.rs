@@ -388,7 +388,10 @@ fn texture_modify<'a>(
                         0,
                         0,
                         0,
-                        (255u8.saturating_sub((i as u32).saturating_mul(5).saturating_div(3).clamp(0, 255) as u8)).saturating_sub(0),
+                        (255u8.saturating_sub(
+                            (i as u32).saturating_mul(5).saturating_div(3).clamp(0, 255) as u8,
+                        ))
+                        .saturating_sub(0),
                     ));
                     texture_canvas
                         .fill_rect(Rect::new(0, height_pos, width, 1))
@@ -400,10 +403,25 @@ fn texture_modify<'a>(
     let mut image_texture = intemediary_texture;
     image_texture.set_blend_mode(BlendMode::Blend);
 
-    // TODO: Scaling large images causes rounded corners to decrease
     match options.rounded {
         Some(rad) => {
-            let TextureQuery { format, .. } = texture.query();
+            let TextureQuery {
+                width,
+                height,
+                format,
+                ..
+            } = texture.query();
+            // Normalize rounded corners
+            let rad = match options.ratio {
+                Some((r_width, r_height)) => {
+                    if (width as f32 / height as f32) < (r_width as f32 / r_height as f32) {
+                        ((width as f32 / r_width as f32) * rad as f32).ceil() as i16
+                    } else {
+                        ((height as f32 / r_height as f32) * rad as f32).ceil() as i16
+                    }
+                }
+                None => rad,
+            };
             assert!(format.supports_alpha());
             canvas
                 .with_texture_canvas(&mut texture, |texture_canvas| {
@@ -468,8 +486,7 @@ impl<'a> TextureManager<'a> {
                 let texture = match options.ratio {
                     Some((width_ratio, height_ratio)) => {
                         let (raw_width, raw_height) = raw_img.size();
-                        let (width_scale, height_scale) = if (raw_width as f32
-                            / raw_height as f32)
+                        let (width_scale, height_scale) = if (raw_width as f32 / raw_height as f32)
                             < (width_ratio as f32 / height_ratio as f32)
                         {
                             (
@@ -512,11 +529,10 @@ impl<'a> TextureManager<'a> {
                             .unwrap();
                         surface.as_texture(self.texture_creator).unwrap()
                     }
-                    None => {
-                        self.texture_creator
-                            .create_texture_from_surface(raw_img)
-                            .unwrap()
-                    }
+                    None => self
+                        .texture_creator
+                        .create_texture_from_surface(raw_img)
+                        .unwrap(),
                 };
 
                 let texture = texture_modify(canvas, self.texture_creator, texture, options);
