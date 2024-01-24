@@ -30,6 +30,7 @@ const THUMBNAIL_RAD: i16 = 6;
 
 fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
     app.canvas.set_clip_rect(layout.to_rect());
+    let string_manager = unsafe { &mut *(&mut app.string_manager as *mut StringManager) };
     let episode_height = 70;
     let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
     let (layout, scrollbar_layout) = layout.split_vert(796, 800);
@@ -74,10 +75,16 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
 
     let mut layout_iter = layouts.iter();
     let current_ep = anime.current_episode();
+    // WOW This far exceeded my expectations
+    let current_ep_str = string_manager.load(
+        anime.filename().as_ptr().wrapping_add(3),
+        Format::Truncate,
+        || format!("Current: {current_ep}"),
+    );
     draw_episode(
         app,
         anime,
-        &format!("Current: {current_ep}"),
+        current_ep_str,
         current_ep.clone(),
         *layout_iter.next().unwrap(),
         layout.to_rect(),
@@ -85,10 +92,15 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
 
     let next_ep = anime.next_episode();
     if let Some(next_ep) = next_ep {
+        let next_ep_str = string_manager.load(
+            anime.filename().as_ptr().wrapping_add(4),
+            Format::Truncate,
+            || format!("Next: {next_ep}"),
+        );
         draw_episode(
             app,
             anime,
-            &format!("Next: {next_ep}"),
+            next_ep_str,
             next_ep,
             *layout_iter.next().unwrap(),
             layout.to_rect(),
@@ -96,11 +108,16 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
     }
 
     let episode_map = anime.episodes();
-    for (episode_layout, (episode, _)) in layout_iter.zip(episode_map) {
+    for (idx, (episode_layout, (episode, _))) in layout_iter.zip(episode_map).enumerate() {
+        let episode_str = string_manager.load(
+            anime.filename().as_ptr().wrapping_add(5 + idx),
+            Format::Truncate,
+            || format!("{episode}"),
+        );
         draw_episode(
             app,
             anime,
-            &format!("{episode}"),
+            episode_str,
             episode.to_owned(),
             *episode_layout,
             layout.to_rect(),

@@ -7,12 +7,12 @@ use sdl2::{
 };
 
 use crate::database::json_database::AnimeDatabaseData;
-use crate::Format;
 use crate::{
     database, rect,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
+use crate::{Format, StringManager};
 
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
@@ -274,7 +274,6 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
 
 pub fn draw_main(app: &mut App, layout: Layout) {
     let (window_width, window_height) = app.canvas.window().size();
-    //let (toolbar_layout, layout) = Layout::new(0, 0, window_width, window_height).split_hori(text_height, window_height);
     let (card_layouts, scrollbar_layout) = layout.split_vert(796, 800);
 
     let (cards_per_row, card_layouts) = card_layouts
@@ -459,6 +458,7 @@ fn draw_card_extra_menu(
 fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layout) -> bool {
     let mut clicked = false;
     let play_button_pad_outer = 10;
+    let string_manager = unsafe { &mut *(&mut app.string_manager as *mut StringManager) };
     let (play_current_layout, rest) = layout.split_hori(1, 3);
     let (play_next_layout, _more_info_layout) = rest.split_hori(1, 2);
     let play_current_layout =
@@ -472,18 +472,14 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
 
     let (current_ep, current_path) = anime.current_episode_path();
 
+    let play_current_str = string_manager.load(
+        anime.filename().as_ptr().wrapping_add(1),
+        Format::Truncate,
+        || format!("Play Current: {}", current_ep),
+    );
     if draw_button(
         app,
-        // TODO: Explore string internment techniques for
-        // these formating operations.
-        //
-        // Perhaps using an enum identifier and the episode,
-        // you could save a hash of this string and clone
-        // a reference to it rather than constantly
-        // constructing the same copy of the string.
-        //
-        // https://en.wikipedia.org/wiki/String_interning
-        &format!("Play Current: {}", current_ep),
+        play_current_str,
         play_button_style.clone(),
         play_current_layout,
     ) {
@@ -499,9 +495,14 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
     }
 
     if let Some((ep, path)) = anime.next_episode_path().unwrap() {
+        let play_next_str = string_manager.load(
+            anime.filename().as_ptr().wrapping_add(2),
+            Format::Truncate,
+            || format!("Play Next: {}", ep),
+        );
         if draw_button(
             app,
-            &format!("Play Next: {}", ep),
+            play_next_str,
             play_button_style.clone(),
             play_next_layout,
         ) {
