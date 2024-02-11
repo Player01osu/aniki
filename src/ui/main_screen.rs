@@ -12,11 +12,12 @@ use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
-use crate::{Format, StringManager};
+use crate::Format;
 
+use super::layout::Layout as _;
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
-    draw_text_centered, text_size, update_anilist_watched, Layout, Screen, Style, TextureOptions,
+    draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions,
     INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
     TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR,
 };
@@ -29,6 +30,8 @@ const CARD_Y_PAD_OUTER: i32 = 13;
 const CARD_X_PAD_INNER: i32 = 25;
 const CARD_Y_PAD_INNER: i32 = 25;
 
+type Layout = Rect;
+
 // TODO: Clean up event handling.
 fn handle_main_events(
     app: &mut App,
@@ -38,8 +41,8 @@ fn handle_main_events(
 ) {
     // Mouse scrolling
     if let Some(last) = card_layouts.last() {
-        let max_height = layout.height as i32;
-        let card_height = last.y + last.height as i32;
+        let max_height = layout.height() as i32;
+        let card_height = last.y + last.height() as i32;
         if app.mouse_scroll_y < 0.0 && card_height > max_height {
             let overflow = (max_height - card_height - app.mouse_scroll_y as i32).max(0);
             app.main_scroll = app.main_scroll + app.mouse_scroll_y as i32 + overflow;
@@ -56,8 +59,8 @@ fn handle_main_events(
     if app.main_search_anime.is_none() {
         if app.keydown(Keycode::J) {
             if let Some(last) = card_layouts.last() {
-                let max_height = layout.height as i32;
-                let card_height = last.y + last.height as i32;
+                let max_height = layout.height() as i32;
+                let card_height = last.y + last.height() as i32;
                 if card_height > max_height {
                     let overflow = (max_height - card_height + 40).max(0);
                     app.main_scroll = app.main_scroll - 40 + overflow;
@@ -135,15 +138,15 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
             }
         }
     };
-    let (search_layout, option_layout) = layout.split_hori(text_height + 20, layout.height);
+    let (search_layout, option_layout) = layout.split_hori(text_height + 20, layout.height());
     let option_layouts = option_layout.split_even_hori(text_height + 20);
 
     app.canvas.set_draw_color(color_hex(0x303030));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
 
     // TODO: Draw rect with border size
     app.canvas.set_draw_color(color_hex(0x101010));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
 
     for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
         let option = unsafe { &**option };
@@ -156,12 +159,12 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
         }
     }
 
-    let search_width = search_layout.width * 8 / 9;
-    let search_x = search_layout.x + ((layout.width - search_width) as i32 / 2);
+    let search_width = search_layout.width() * 8 / 9;
+    let search_x = search_layout.x + ((layout.width() - search_width) as i32 / 2);
     let search_y = search_layout.y + 10;
     draw_input_box(app, search_x, search_y, search_width);
 
-    if app.mouse_clicked_left() && !layout.to_rect().contains_point(app.mouse_points()) {
+    if app.mouse_clicked_left() && !layout.contains_point(app.mouse_points()) {
         app.mouse_clicked_left_unset();
         app.main_search_anime = None;
         app.main_alias_anime = None;
@@ -174,10 +177,10 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     let (_, text_height) = app
         .text_manager
         .text_size(BACK_BUTTON_FONT_INFO, &app.text_input);
-    let (search_layout, option_layout) = layout.split_hori(text_height + 40, layout.height);
-    let search_width = search_layout.width * 8 / 9;
-    let search_x = search_layout.x + ((search_layout.width - search_width) as i32 / 2);
-    let search_y = search_layout.y + (search_layout.height as i32 - text_height as i32) / 2;
+    let (search_layout, option_layout) = layout.split_hori(text_height + 40, layout.height());
+    let search_width = search_layout.width() * 8 / 9;
+    let search_x = search_layout.x + ((search_layout.width() - search_width) as i32 / 2);
+    let search_y = search_layout.y + (search_layout.height() as i32 - text_height as i32) / 2;
     let options: Box<[&str]> = {
         if anime.title() == anime.filename() {
             [unsafe { &*(anime.title() as *const _) }].into()
@@ -191,16 +194,16 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
             .into()
         }
     };
-    let height = option_layout.height - 5;
-    let (_, option_layout) = option_layout.split_hori(option_layout.height - height, height);
+    let height = option_layout.height() - 5;
+    let (_, option_layout) = option_layout.split_hori(option_layout.height() - height, height);
     let option_layouts = option_layout.split_even_hori(text_height + 20);
 
     app.canvas.set_draw_color(color_hex(0x303030));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
 
     // TODO: Draw rect with border size
     app.canvas.set_draw_color(color_hex(0x101010));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
 
     draw_input_box(app, search_x, search_y, search_width);
 
@@ -220,7 +223,7 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
         app.input_util.stop();
     }
 
-    if app.mouse_clicked_left() && !layout.to_rect().contains_point(app.mouse_points()) {
+    if app.mouse_clicked_left() && !layout.contains_point(app.mouse_points()) {
         app.mouse_clicked_left_unset();
         app.main_search_anime = None;
         app.main_alias_anime = None;
@@ -229,9 +232,9 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
 
 fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
     let font_info = INPUT_BOX_FONT_INFO;
-    if layout.to_rect().contains_point(app.mouse_points()) {
+    if layout.contains_point(app.mouse_points()) {
         app.canvas.set_draw_color(color_hex(0x505050));
-        app.canvas.fill_rect(layout.to_rect()).unwrap();
+        app.canvas.fill_rect(layout).unwrap();
 
         if app.mouse_clicked_left() {
             return true;
@@ -240,9 +243,9 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
     let (text_width, text_height) = app.text_manager.text_size(font_info, option);
 
     let side_pad = 5;
-    if text_width > layout.width - side_pad {
+    if text_width > layout.width() - side_pad {
         let layout = layout.pad_left(side_pad as i32).pad_right(side_pad as i32);
-        app.canvas.set_clip_rect(layout.to_rect());
+        app.canvas.set_clip_rect(layout);
         draw_text(
             &mut app.canvas,
             &mut app.text_manager,
@@ -250,7 +253,7 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
             option,
             color_hex(0xa0a0a0),
             layout.x,
-            layout.y + (layout.height as i32 - text_height as i32) / 2,
+            layout.y + (layout.height() as i32 - text_height as i32) / 2,
             None,
             None,
         );
@@ -262,8 +265,8 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
             font_info,
             option,
             color_hex(0xa0a0a0),
-            layout.x + layout.width as i32 / 2,
-            layout.y + layout.height as i32 / 2,
+            layout.x + layout.width() as i32 / 2,
+            layout.y + layout.height() as i32 / 2,
             None,
             None,
         );
@@ -290,8 +293,8 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     }
     if app.resized() {
         if let Some(last) = card_layouts.last() {
-            if (last.y + last.height as i32) < window_height as i32 {
-                app.main_scroll -= last.y + last.height as i32 - window_height as i32;
+            if (last.y + last.height() as i32) < window_height as i32 {
+                app.main_scroll -= last.y + last.height() as i32 - window_height as i32;
             }
         }
     }
@@ -299,7 +302,7 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     let anime_list = app.database.animes();
     let mut any = false;
     for (idx, (grid_space, anime)) in card_layouts.iter().zip(anime_list.iter_mut()).enumerate() {
-        if grid_space.y + grid_space.height as i32 > 0 {
+        if grid_space.y + grid_space.height() as i32 > 0 {
             if grid_space.y > window_height as i32 {
                 break;
             }
@@ -313,15 +316,15 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     // Draw scrollbar
     if let Some(last) = card_layouts.last() {
         let scale =
-            scrollbar_layout.height as f32 / (last.y + last.height as i32 - app.main_scroll) as f32;
+            scrollbar_layout.height() as f32 / (last.y + last.height() as i32 - app.main_scroll) as f32;
         if scale < 1.0 {
-            let height = (scrollbar_layout.height as f32 * scale) as u32;
+            let height = (scrollbar_layout.height() as f32 * scale) as u32;
             app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
             app.canvas
                 .fill_rect(rect!(
                     scrollbar_layout.x,
                     scrollbar_layout.y + (-1.0 * app.main_scroll as f32 * scale) as i32,
-                    scrollbar_layout.width,
+                    scrollbar_layout.width(),
                     height
                 ))
                 .unwrap();
@@ -364,7 +367,7 @@ pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradie
             &mut app.canvas,
             MISSING_THUMBNAIL,
             TextureOptions::new()
-                .ratio(Some((layout.width, layout.height)))
+                .ratio(Some((layout.width(), layout.height())))
                 .rounded(rounded)
                 .gradient(gradient),
         )
@@ -372,7 +375,7 @@ pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradie
 
     app.canvas.set_blend_mode(BlendMode::Blend);
     app.canvas
-        .copy(texture.as_ref(), None, layout.to_rect())
+        .copy(texture.as_ref(), None, layout)
         .unwrap();
 }
 
@@ -389,7 +392,7 @@ fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
 }
 
 fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
-    ((!app.main_keyboard_override && layout.to_rect().contains_point(app.mouse_points()))
+    ((!app.main_keyboard_override && layout.contains_point(app.mouse_points()))
         || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx)))
         && (app.main_search_anime.is_none() && app.main_alias_anime.is_none())
 }
@@ -518,7 +521,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         text_size(&mut app.text_manager, TITLE_FONT_INFO, title)
     };
     let (top_layout, text_layout) =
-        layout.split_hori(layout.height - text_height - 19, layout.height);
+        layout.split_hori(layout.height() - text_height - 19, layout.height());
     let image_layout = layout;
 
     // draw thumbnail
@@ -530,7 +533,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         selected = true;
         app.main_selected = Some(idx);
         let image_hover_color = color_hex_a(0x1010108B);
-        let image_rect = image_layout.to_rect();
+        let image_rect = image_layout;
         app.canvas
             .rounded_box(
                 image_rect.left() as i16,
@@ -568,7 +571,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     // draw title background
     let f = {
         || {
-            if text_width > layout.width - 35 {
+            if text_width > layout.width() - 35 {
                 let mut title = anime.display_title().to_string();
 
                 while text_size(
@@ -576,7 +579,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
                     TITLE_FONT_INFO,
                     format!("{title}..."),
                 )
-                .0 > layout.width - 35
+                .0 > layout.width() - 35
                 {
                     title.pop();
                 }
@@ -599,8 +602,8 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         TITLE_FONT_INFO,
         title,
         card_fg_color,
-        text_layout.x + text_layout.width as i32 / 2,
-        text_layout.y + text_layout.height as i32 / 2,
+        text_layout.x + text_layout.width() as i32 / 2,
+        text_layout.y + text_layout.height() as i32 / 2,
         None,
         None,
     );

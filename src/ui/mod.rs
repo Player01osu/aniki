@@ -34,6 +34,7 @@ use sdl2::video::WindowContext;
 
 use self::episode_screen::draw_anime_expand;
 use self::episode_screen::DESCRIPTION_FONT_INFO;
+use self::layout::Layout as _;
 use self::login_screen::draw_login;
 use self::main_screen::draw_main;
 use self::main_screen::CARD_HEIGHT;
@@ -46,6 +47,7 @@ use sdl2::rwops::RWops;
 pub mod episode_screen;
 pub mod login_screen;
 pub mod main_screen;
+pub mod layout;
 
 const DEBUG_COLOR: u32 = 0xFF0000;
 
@@ -118,6 +120,7 @@ type FontInfo = (&'static str, u16);
 type WidthRatio = u32;
 type HeightRatio = u32;
 type TextManagerKey = (String, FontInfo, u32, Option<u32>);
+type Layout = Rect;
 
 #[macro_export]
 macro_rules! rect {
@@ -138,14 +141,6 @@ pub struct Style {
 
 pub struct MostlyStatic<'a> {
     pub animes: Database<'a>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Layout {
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
 }
 
 type ImageData = (String, TextureOptions);
@@ -561,168 +556,6 @@ pub enum Screen {
     SelectEpisode(*const database::Anime),
 }
 
-impl Layout {
-    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Layout {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
-
-    pub fn scroll_y(self, scroll_distance: i32) -> Self {
-        Self {
-            x: self.x,
-            y: self.y + scroll_distance,
-            width: self.width,
-            height: self.height,
-        }
-    }
-
-    pub fn split_grid_center(
-        mut self,
-        width: u32,
-        height: u32,
-        x_pad: i32,
-        y_pad: i32,
-    ) -> (usize, impl Iterator<Item = Self>) {
-        self.width += x_pad as u32;
-        let wrap_width = self.width;
-        let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
-        let max_width = (width as i32 + x_pad) * idx_wrap;
-        self.x = (wrap_width as i32 - max_width) / 2;
-        self.split_grid(width, height, x_pad, y_pad)
-    }
-
-    pub fn split_grid(
-        self,
-        width: u32,
-        height: u32,
-        x_pad: i32,
-        y_pad: i32,
-    ) -> (usize, impl Iterator<Item = Self>) {
-        let wrap_width = self.width;
-        let idx_wrap = (wrap_width as i32 - self.x) / (width as i32 + x_pad);
-        (
-            idx_wrap as usize,
-            (0..).map(move |idx| Self {
-                x: self.x + (idx as i32 % idx_wrap * (width as i32 + x_pad)),
-                y: self.y + (height as i32 + y_pad) * (idx as i32 / idx_wrap),
-                width,
-                height,
-            }),
-        )
-    }
-
-    pub fn split_hori(self, top: u32, ratio: u32) -> (Self, Self) {
-        assert!(top < ratio);
-        let top_height = (self.height as f32 * (top as f32 / ratio as f32)) as u32;
-        let top_layout = Self {
-            x: self.x,
-            y: self.y,
-            width: self.width,
-            height: top_height,
-        };
-        let bottom_layout = Self {
-            x: self.x,
-            y: self.y + top_height as i32,
-            width: self.width,
-            height: self.height - top_height,
-        };
-        (top_layout, bottom_layout)
-    }
-
-    pub fn split_vert(self, left: u32, ratio: u32) -> (Self, Self) {
-        assert!(left < ratio);
-        let left_width = (self.width as f32 * (left as f32 / ratio as f32)) as u32;
-        let left_layout = Self {
-            x: self.x,
-            y: self.y,
-            width: left_width,
-            height: self.height,
-        };
-        let right_layout = Self {
-            x: self.x + left_width as i32,
-            y: self.y,
-            width: self.width - left_width,
-            height: self.height,
-        };
-        (left_layout, right_layout)
-    }
-
-    pub fn split_even_hori(self, height: u32) -> impl Iterator<Item = Layout> {
-        (0..).map(move |idx| Self {
-            x: self.x,
-            y: self.y + height as i32 * idx as i32,
-            width: self.width,
-            height,
-        })
-    }
-
-    pub fn overlay_vert(self, top: u32, ratio: u32) -> (Self, Self) {
-        assert!(top < ratio);
-        let top_height = (self.height as f32 * (top as f32 / ratio as f32)) as u32;
-        let top_layout = self;
-        let bottom_layout = Self {
-            x: self.x,
-            y: self.y + top_height as i32,
-            width: self.width,
-            height: self.height - top_height,
-        };
-        (top_layout, bottom_layout)
-    }
-
-    pub fn pad_outer(self, pad_x: u32, pad_y: u32) -> Self {
-        Self {
-            x: self.x + pad_x as i32,
-            y: self.y + pad_y as i32,
-            width: self.width - 2 * pad_x,
-            height: self.height - 2 * pad_y,
-        }
-    }
-
-    pub fn pad_left(self, pad: i32) -> Self {
-        Self {
-            x: self.x + pad,
-            y: self.y,
-            width: self.width,
-            height: self.height,
-        }
-    }
-
-    pub fn pad_right(self, pad: i32) -> Self {
-        Self {
-            x: self.x,
-            y: self.y,
-            width: (self.width as i32 - pad * 2) as u32,
-            height: self.height,
-        }
-    }
-
-    pub fn pad_top(self, pad: i32) -> Self {
-        Self {
-            x: self.x,
-            y: self.y + pad,
-            width: self.width,
-            height: self.height,
-        }
-    }
-
-    pub fn pad_bottom(self, pad: i32) -> Self {
-        Self {
-            x: self.x,
-            y: self.y,
-            width: self.width,
-            height: (self.height as i32 - pad) as u32,
-        }
-    }
-
-    pub fn to_rect(self) -> Rect {
-        rect!(self.x, self.y, self.width, self.height)
-    }
-}
-
 fn rgb_hex(hex: u32) -> (u8, u8, u8) {
     let r = ((hex & 0xFF0000) >> 0x10) as u8;
     let g = ((hex & 0x00FF00) >> 0x08) as u8;
@@ -789,7 +622,7 @@ pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) -> bool {
 
     // Draw box
     app.canvas.set_draw_color(color_hex(0x909090));
-    app.canvas.draw_rect(layout.to_rect()).unwrap();
+    app.canvas.draw_rect(layout).unwrap();
 
     // Draw cursor
     app.canvas.set_draw_color(color_hex(0xB0B0B0));
@@ -798,13 +631,13 @@ pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) -> bool {
             text_layout.x + text_width as i32,
             text_layout.y + pad_height,
             1,
-            text_layout.height - (pad_height as u32 * 2)
+            text_layout.height() - (pad_height as u32 * 2)
         ))
         .unwrap();
 
     if !app.text_input.is_empty() {
         let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
-        app.canvas.set_clip_rect(layout.to_rect());
+        app.canvas.set_clip_rect(layout);
         draw_text(
             &mut app.canvas,
             &mut app.text_manager,
@@ -847,7 +680,7 @@ fn draw_image_clip(
         &mut app.canvas,
         path,
         TextureOptions::new()
-            .ratio(Some((layout.width, layout.height)))
+            .ratio(Some((layout.width(), layout.height())))
             .rounded(rounded)
             .gradient(gradient),
     )?;
@@ -858,10 +691,10 @@ fn draw_image_clip(
     } = texture.query();
 
     let scaling =
-        if image_width as i32 - layout.width as i32 > image_height as i32 - layout.height as i32 {
-            image_width as f32 / layout.width as f32
+        if image_width as i32 - layout.width() as i32 > image_height as i32 - layout.height() as i32 {
+            image_width as f32 / layout.width() as f32
         } else {
-            image_height as f32 / layout.height as f32
+            image_height as f32 / layout.height() as f32
         };
     image_width = (image_width as f32 / scaling) as u32;
     image_height = (image_height as f32 / scaling) as u32;
@@ -897,10 +730,10 @@ fn draw_image_float(
         ..
     } = texture.query();
     let scaling =
-        if image_width as i32 - layout.width as i32 > image_height as i32 - layout.height as i32 {
-            image_width as f32 / layout.width as f32
+        if image_width as i32 - layout.width() as i32 > image_height as i32 - layout.height() as i32 {
+            image_width as f32 / layout.width() as f32
         } else {
-            image_height as f32 / layout.height as f32
+            image_height as f32 / layout.height() as f32
         };
     image_width = (image_width as f32 / scaling) as u32;
     image_height = (image_height as f32 / scaling) as u32;
@@ -914,8 +747,8 @@ fn draw_image_float(
         ),
         None => Rect::from_center(
             (
-                layout.x + layout.width as i32 / 2,
-                layout.y + layout.height as i32 / 2,
+                layout.x + layout.width() as i32 / 2,
+                layout.y + layout.height() as i32 / 2,
             ),
             image_width,
             image_height,
@@ -1022,16 +855,16 @@ impl Style {
 
 /// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
-    let button_rect = layout.to_rect();
+    let button_rect = layout;
     let (text_width, _text_height) = text_size(&mut app.text_manager, style.font_info, text);
-    let text = if text_width > layout.width {
+    let text = if text_width > layout.width() {
         format!("{}...", text.split_at(15).0)
     } else {
         text.to_owned()
     };
 
     let (button_fg_color, button_bg_color) =
-        if layout.to_rect().contains_point((app.mouse_x, app.mouse_y)) {
+        if layout.contains_point((app.mouse_x, app.mouse_y)) {
             (style.fg_hover_color, style.bg_hover_color)
         } else {
             (style.fg_color, style.bg_color)
@@ -1068,7 +901,7 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
     );
 
     let clicked = app.mouse_clicked_left();
-    let in_bounds = layout.to_rect().contains_point(app.mouse_points());
+    let in_bounds = layout.contains_point(app.mouse_points());
     if clicked && in_bounds {
         app.mouse_clicked_left_unset();
         true
@@ -1089,7 +922,7 @@ fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
 pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16>) {
     let bg_color = color_hex(0x9A9A9A);
     if let Some(rounded) = rounded {
-        let rect = layout.to_rect();
+        let rect = layout;
         app.canvas
             .rounded_box(
                 rect.left() as i16,
@@ -1102,7 +935,7 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
             .unwrap();
     } else {
         app.canvas.set_draw_color(bg_color);
-        app.canvas.fill_rect(layout.to_rect()).unwrap();
+        app.canvas.fill_rect(layout).unwrap();
     }
     draw_text_centered(
         &mut app.canvas,
@@ -1110,8 +943,8 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
         DESCRIPTION_FONT_INFO,
         "No Thumbnail :<",
         color_hex(0x303030),
-        layout.x + layout.width as i32 / 2,
-        layout.y + layout.height as i32 / 2,
+        layout.x + layout.width() as i32 / 2,
+        layout.y + layout.height() as i32 / 2,
         None,
         None,
     );
@@ -1119,7 +952,7 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
 
 fn dbg_layout(app: &mut App, layout: Layout) {
     app.canvas.set_draw_color(Color::RED);
-    app.canvas.draw_rect(layout.to_rect()).unwrap();
+    app.canvas.draw_rect(layout).unwrap();
 }
 
 fn draw_connection_overlay_connected(app: &mut App) {
@@ -1129,7 +962,7 @@ fn draw_connection_overlay_connected(app: &mut App) {
     let (width, height) = app.canvas.window().size();
     let layout = Layout::new(0, (height - text_height) as i32, width, height);
     app.canvas.set_draw_color(color_hex(0x006600));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
     draw_text_centered(
         &mut app.canvas,
         &mut app.text_manager,
@@ -1150,7 +983,7 @@ fn draw_connection_overlay_disconnected(app: &mut App) {
     let (width, height) = app.canvas.window().size();
     let layout = Layout::new(0, (height - text_height) as i32, width, height);
     app.canvas.set_draw_color(color_hex(0x101010));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
     draw_text_centered(
         &mut app.canvas,
         &mut app.text_manager,
@@ -1172,7 +1005,7 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
         .round(None);
 
     app.canvas.set_draw_color(color_hex(0x0B0B0B));
-    app.canvas.fill_rect(layout.to_rect()).unwrap();
+    app.canvas.fill_rect(layout).unwrap();
 
     // Draw login button
     let layout = {
@@ -1183,7 +1016,7 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
         let (login_width, _) = app.text_manager.text_size(TOOLBAR_FONT_INFO, text);
         let login_width = login_width + toolbar_button_side_pad;
         let (layout, login_button_layout) =
-            layout.split_vert(layout.width - login_width, layout.width);
+            layout.split_vert(layout.width() - login_width, layout.width());
         if draw_button(app, text, toolbar_button_style, login_button_layout) {
             match app.connection_overlay.state {
                 ConnectionOverlayState::Disconnected => {

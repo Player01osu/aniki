@@ -10,9 +10,10 @@ use crate::{
     App,
 };
 
+use super::layout::Layout;
 use super::{
     draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered,
-    update_anilist_watched, Layout, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
+    update_anilist_watched, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
     THUMBNAIL_MISSING_SIZE, TITLE_FONT, TITLE_FONT_COLOR,
 };
 
@@ -28,8 +29,8 @@ pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 
 const THUMBNAIL_RAD: i16 = 6;
 
-fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
-    app.canvas.set_clip_rect(layout.to_rect());
+fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Rect) {
+    app.canvas.set_clip_rect(layout);
     let string_manager = unsafe { &mut *(&mut app.string_manager as *mut StringManager) };
     let episode_height = 70;
     let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
@@ -38,12 +39,12 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
         .scroll_y(app.episode_scroll)
         .split_even_hori(episode_height)
         .take(episode_count)
-        .collect::<Box<[Layout]>>();
+        .collect::<Box<[Rect]>>();
 
     // Mouse scrolling
     if let Some(last) = layouts.last() {
-        let max_height = layout.height as i32 + layout.y;
-        let height = last.y + last.height as i32;
+        let max_height = layout.height() as i32 + layout.y;
+        let height = last.y + last.height() as i32;
         if app.mouse_scroll_y < 0.0 && height > max_height {
             let overflow = (max_height - height - app.mouse_scroll_y as i32).max(0);
             app.episode_scroll = app.episode_scroll + app.mouse_scroll_y as i32 + overflow;
@@ -59,7 +60,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
 
     if app.keydown(Keycode::J) {
         if let Some(last) = layouts.last() {
-            if last.y + last.height as i32 > layout.y + layout.height as i32 {
+            if last.y + last.height() as i32 > layout.y + layout.height() as i32 {
                 app.episode_scroll -= 40;
             }
         }
@@ -81,7 +82,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
         &format!("Current: {current_ep}"),
         current_ep.clone(),
         *layout_iter.next().unwrap(),
-        layout.to_rect(),
+        layout,
     );
 
     let next_ep = anime.next_episode();
@@ -92,7 +93,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
             &format!("Next: {next_ep}"),
             next_ep,
             *layout_iter.next().unwrap(),
-            layout.to_rect(),
+            layout,
         );
     }
 
@@ -109,21 +110,21 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
             episode_str,
             episode.to_owned(),
             *episode_layout,
-            layout.to_rect(),
+            layout,
         );
     }
     app.canvas.set_clip_rect(None);
 
     // Draw scrollbar
-    let scale = scrollbar_layout.height as f32 / (episode_height as f32 * episode_count as f32);
+    let scale = scrollbar_layout.height() as f32 / (episode_height as f32 * episode_count as f32);
     if scale < 1.0 {
-        let height = (scrollbar_layout.height as f32 * scale) as u32;
+        let height = (scrollbar_layout.height() as f32 * scale) as u32;
         app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
         app.canvas
             .fill_rect(rect!(
                 scrollbar_layout.x,
                 scrollbar_layout.y + (-1.0 * app.episode_scroll as f32 * scale) as i32,
-                scrollbar_layout.width,
+                scrollbar_layout.width(),
                 height
             ))
             .unwrap();
@@ -136,7 +137,7 @@ pub fn draw_anime_expand(app: &mut App, anime: &database::Anime) {
     let (window_width, window_height) = app.canvas.window().size();
     // TODO: Think about abstracting scrolling type windows out
     // into a function or data structure
-    let layout = Layout::new(
+    let layout = Rect::new(
         DESCRIPTION_X_PAD_OUTER,
         DESCRIPTION_Y_PAD_OUTER,
         window_width - DESCRIPTION_X_PAD_OUTER as u32,
@@ -156,7 +157,7 @@ pub fn draw_anime_expand(app: &mut App, anime: &database::Anime) {
 fn draw_top_panel_with_metadata(
     app: &mut App,
     anime: &database::Anime,
-    layout: Layout,
+    layout: Rect,
     metadata: &AnimeDatabaseData,
 ) {
     let (_, font_height) = app.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
@@ -164,8 +165,8 @@ fn draw_top_panel_with_metadata(
     let (title_layout, description_layout) = description_layout.split_hori(2, 7);
     let (title_layout, description_header_layout) = title_layout.split_hori(1, 2);
     let (description_layout, directory_name_layout) = description_layout.split_hori(
-        description_layout.height - font_height,
-        description_layout.height,
+        description_layout.height() - font_height,
+        description_layout.height(),
     );
     draw_text(
         &mut app.canvas,
@@ -175,8 +176,8 @@ fn draw_top_panel_with_metadata(
         color_hex(DESCRIPTION_FONT_COLOR),
         title_layout.x,
         title_layout.y,
-        Some(title_layout.width),
-        Some(title_layout.height),
+        Some(title_layout.width()),
+        Some(title_layout.height()),
     );
     draw_text(
         &mut app.canvas,
@@ -186,8 +187,8 @@ fn draw_top_panel_with_metadata(
         color_hex(DESCRIPTION_FONT_COLOR),
         description_header_layout.x,
         description_header_layout.y,
-        Some(description_header_layout.width),
-        Some(description_header_layout.height),
+        Some(description_header_layout.width()),
+        Some(description_header_layout.height()),
     );
     draw_text(
         &mut app.canvas,
@@ -197,36 +198,36 @@ fn draw_top_panel_with_metadata(
         color_hex(DESCRIPTION_FONT_COLOR),
         description_layout.x,
         description_layout.y,
-        Some(description_layout.width),
-        Some(description_layout.height),
+        Some(description_layout.width()),
+        Some(description_layout.height()),
     );
-    app.canvas.set_clip_rect(directory_name_layout.to_rect());
+    app.canvas.set_clip_rect(directory_name_layout);
     draw_text_centered(
         &mut app.canvas,
         &mut app.text_manager,
         DIRECTORY_NAME_FONT_INFO,
         anime.filename(),
         color_hex(DIRECTORY_NAME_FONT_COLOR),
-        directory_name_layout.x + directory_name_layout.width as i32 / 2,
-        directory_name_layout.y + directory_name_layout.height as i32 / 2,
+        directory_name_layout.x + directory_name_layout.width() as i32 / 2,
+        directory_name_layout.y + directory_name_layout.height() as i32 / 2,
         None,
-        Some(directory_name_layout.height),
+        Some(directory_name_layout.height()),
     );
     app.canvas.set_clip_rect(None);
 }
 
-fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Layout) {
+fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Rect) {
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
             if let Ok((image_width, image_height)) = app.image_manager.query_size(&mut app.canvas, thumbnail) {
                 let (image_layout, description_layout) =
-                    layout.split_vert(image_width * layout.height / image_height, layout.width);
+                    layout.split_vert(image_width * layout.height() / image_height, layout.width());
                 let _ = draw_image_float(app, thumbnail, image_layout, None, Some(THUMBNAIL_RAD), None);
                 description_layout.pad_outer(10, 10)
             } else {
                 let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
                 let (image_layout, description_layout) =
-                    layout.split_vert(image_width * layout.height / image_height, layout.width);
+                    layout.split_vert(image_width * layout.height() / image_height, layout.width());
                 draw_missing_thumbnail(app, image_layout, None);
                 description_layout.pad_outer(10, 10)
             }
@@ -234,7 +235,7 @@ fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: L
         None => {
             let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
             let (image_layout, description_layout) =
-                layout.split_vert(image_width * layout.height / image_height, layout.width);
+                layout.split_vert(image_width * layout.height() / image_height, layout.width());
             draw_missing_thumbnail(app, image_layout, None);
             description_layout.pad_outer(10, 10)
         }
@@ -251,7 +252,7 @@ fn draw_episode(
     anime: &database::Anime,
     text: &str,
     episode: Episode,
-    layout: Layout,
+    layout: Rect,
     clip_rect: Rect,
 ) {
     let (play_width, play_height) = app
@@ -261,13 +262,13 @@ fn draw_episode(
     let (play_layout, ep_name_layout) = layout
         .pad_outer(0, 5)
         .pad_right(5)
-        .split_vert(play_width * layout.height / play_height, layout.width);
+        .split_vert(play_width * layout.height() / play_height, layout.width());
     let ep_name_layout = ep_name_layout.pad_left(30);
-    if layout.to_rect().contains_point(app.mouse_points())
+    if layout.contains_point(app.mouse_points())
         && clip_rect.contains_point(app.mouse_points())
     {
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
-        app.canvas.fill_rect(layout.to_rect()).unwrap();
+        app.canvas.fill_rect(layout).unwrap();
         if app.mouse_clicked_left() {
             let anime = app.database.get_anime(anime.filename()).unwrap();
             anime.update_watched(episode.to_owned()).unwrap();
@@ -289,9 +290,9 @@ fn draw_episode(
         color_hex(DESCRIPTION_FONT_COLOR),
         ep_name_layout.x,
         ep_name_layout.y,
-        Some(ep_name_layout.width),
+        Some(ep_name_layout.width()),
         None,
     );
     app.canvas.set_draw_color(color_hex(0x2A2A2A));
-    app.canvas.draw_rect(layout.to_rect()).unwrap();
+    app.canvas.draw_rect(layout).unwrap();
 }
