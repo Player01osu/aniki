@@ -17,7 +17,7 @@ use sdl2::{
     keyboard::Keycode,
     render::{Canvas, TextureCreator},
 };
-use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::path::Path;
@@ -134,7 +134,7 @@ pub struct App<'a, 'b> {
     pub mouse_scroll_x: f32,
     pub mouse_scroll_y: f32,
     pub mouse_scroll_y_accel: f32,
-    pub keycode_map: BTreeMap<u32, bool>,
+    pub keyset: HashSet<Keycode>,
     pub keymod: keyboard::Mod,
 }
 
@@ -191,7 +191,7 @@ impl<'a, 'b> App<'a, 'b> {
             mouse_scroll_y_accel: 0.0,
 
             text_input: String::new(),
-            keycode_map: BTreeMap::new(),
+            keyset: HashSet::new(),
             keymod: keyboard::Mod::NOMOD,
         }
     }
@@ -206,10 +206,7 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     pub fn keydown(&self, keycode: Keycode) -> bool {
-        self.keycode_map
-            .get(&(keycode as u32))
-            .copied()
-            .unwrap_or(false)
+        self.keyset.contains(&keycode)
     }
 
     pub fn mouse_click_left_true(&mut self) {
@@ -257,7 +254,7 @@ impl<'a, 'b> App<'a, 'b> {
         self.mouse_scroll_y_accel = self.mouse_scroll_y_accel / 1.9;
         self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * 4.7 / 5.8;
 
-        self.keycode_map.clear();
+        self.keyset.clear();
         self.state_flag = 0;
         self.id = 0;
     }
@@ -486,7 +483,7 @@ async fn main() -> anyhow::Result<()> {
                     keymod,
                     ..
                 } => {
-                    app.keycode_map.insert(keycode as u32, true);
+                    app.keyset.insert(keycode);
                     app.keymod = keymod;
                 }
                 Event::KeyUp {
@@ -494,7 +491,7 @@ async fn main() -> anyhow::Result<()> {
                     keymod,
                     ..
                 } => {
-                    app.keycode_map.insert(keycode as u32, false);
+                    app.keyset.insert(keycode);
                     app.keymod = keymod;
                 }
                 Event::Window {
