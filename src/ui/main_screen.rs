@@ -17,17 +17,17 @@ use crate::{Format, StringManager};
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
     draw_text_centered, text_size, update_anilist_watched, Layout, Screen, Style, TextureOptions,
-    INPUT_BOX_FONT_INFO, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR,
-    TITLE_FONT_INFO, MISSING_THUMBNAIL, TITLE_HOVER_FONT_COLOR,
+    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
+    TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR,
 };
 
 pub const CARD_RAD: i16 = 10;
 pub const CARD_WIDTH: u32 = 200;
 pub const CARD_HEIGHT: u32 = 300;
-const CARD_X_PAD_OUTER: i32 = 10;
-const CARD_Y_PAD_OUTER: i32 = 10;
-const CARD_X_PAD_INNER: i32 = 20;
-const CARD_Y_PAD_INNER: i32 = 20;
+const CARD_X_PAD_OUTER: i32 = 13;
+const CARD_Y_PAD_OUTER: i32 = 13;
+const CARD_X_PAD_INNER: i32 = 25;
+const CARD_Y_PAD_INNER: i32 = 25;
 
 // TODO: Clean up event handling.
 fn handle_main_events(
