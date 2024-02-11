@@ -70,6 +70,12 @@ cargo b --release
 I need something to keep track of anime I watch and collect them into an fast
 and easy to use UI.
 
+## Todo
+
+- [ ] Optimize: Probably with using OpenGL calls manually
+- [ ] Cleanup
+- [ ] Statically Link
+
 ## Related Projects
 
 - [Taiga](https://taiga.moe/) - Anime sync and media detecting desktop application for Windows
