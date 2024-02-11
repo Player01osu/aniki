@@ -458,7 +458,6 @@ fn draw_card_extra_menu(
 fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layout) -> bool {
     let mut clicked = false;
     let play_button_pad_outer = 10;
-    let string_manager = unsafe { &mut *(&mut app.string_manager as *mut StringManager) };
     let (play_current_layout, rest) = layout.split_hori(1, 3);
     let (play_next_layout, _more_info_layout) = rest.split_hori(1, 2);
     let play_current_layout =
@@ -472,14 +471,9 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
 
     let (current_ep, current_path) = anime.current_episode_path();
 
-    let play_current_str = string_manager.load(
-        anime.filename().as_ptr().wrapping_add(1),
-        Format::Truncate,
-        || format!("Play Current: {}", current_ep),
-    );
     if draw_button(
         app,
-        play_current_str,
+        &format!("Play Current: {}", current_ep),
         play_button_style.clone(),
         play_current_layout,
     ) {
@@ -495,14 +489,9 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
     }
 
     if let Some((ep, path)) = anime.next_episode_path().unwrap() {
-        let play_next_str = string_manager.load(
-            anime.filename().as_ptr().wrapping_add(2),
-            Format::Truncate,
-            || format!("Play Next: {}", ep),
-        );
         if draw_button(
             app,
-            play_next_str,
+            &format!("Play Next: {}", ep),
             play_button_style.clone(),
             play_next_layout,
         ) {

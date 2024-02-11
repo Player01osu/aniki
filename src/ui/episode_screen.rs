@@ -1,7 +1,7 @@
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::database;
+use crate::{database, Format, StringManager};
 use crate::database::episode::Episode;
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
@@ -75,16 +75,10 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
 
     let mut layout_iter = layouts.iter();
     let current_ep = anime.current_episode();
-    // WOW This far exceeded my expectations
-    let current_ep_str = string_manager.load(
-        anime.filename().as_ptr().wrapping_add(3),
-        Format::Truncate,
-        || format!("Current: {current_ep}"),
-    );
     draw_episode(
         app,
         anime,
-        current_ep_str,
+        &format!("Current: {current_ep}"),
         current_ep.clone(),
         *layout_iter.next().unwrap(),
         layout.to_rect(),
@@ -92,15 +86,10 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
 
     let next_ep = anime.next_episode();
     if let Some(next_ep) = next_ep {
-        let next_ep_str = string_manager.load(
-            anime.filename().as_ptr().wrapping_add(4),
-            Format::Truncate,
-            || format!("Next: {next_ep}"),
-        );
         draw_episode(
             app,
             anime,
-            next_ep_str,
+            &format!("Next: {next_ep}"),
             next_ep,
             *layout_iter.next().unwrap(),
             layout.to_rect(),
@@ -110,8 +99,8 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Layout) {
     let episode_map = anime.episodes();
     for (idx, (episode_layout, (episode, _))) in layout_iter.zip(episode_map).enumerate() {
         let episode_str = string_manager.load(
-            anime.filename().as_ptr().wrapping_add(5 + idx),
-            Format::Truncate,
+            anime.filename().as_ptr(),
+            Format::Episode(idx as u8),
             || format!("{episode}"),
         );
         draw_episode(

@@ -38,15 +38,20 @@ mod config;
 mod database;
 mod ui;
 
-const MOUSE_CLICK_LEFT: u8 = 0x00000001;
-const MOUSE_CLICK_RIGHT: u8 = 0x00000002;
-const MOUSE_MOVED: u8 = 0x00000004;
-const RESIZED: u8 = 0x00000008;
+const MOUSE_CLICK_LEFT: u8 = 0x01;
+const MOUSE_CLICK_RIGHT: u8 = 0x02;
+const MOUSE_MOVED: u8 = 0x04;
+const RESIZED: u8 = 0x08;
 pub const CONNECTION_OVERLAY_TIMEOUT: u16 = 210;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Format {
     Truncate,
+    CurrentMain,
+    CurrentEpisode,
+    NextMain,
+    NextEpisode,
+    Episode(u8),
 }
 
 pub struct StringManager {
