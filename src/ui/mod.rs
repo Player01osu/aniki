@@ -1060,8 +1060,8 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
         }
     }
 
+    app.connection_overlay.timeout = app.connection_overlay.timeout.saturating_sub(1);
     if app.connection_overlay.timeout > 0 {
-        app.connection_overlay.timeout -= 1;
         match app.connection_overlay.state {
             ConnectionOverlayState::Connected => {
                 draw_connection_overlay_connected(app);

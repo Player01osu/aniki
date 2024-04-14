@@ -520,16 +520,11 @@ async fn main() -> anyhow::Result<()> {
                 app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
                 app.canvas.clear();
                 draw(&mut app, &mut screen);
-
                 if *t <= 0 && app.connection_overlay.timeout <= 0 {
                     let (width, height) = app.canvas.window().size();
                     let pixel_format = app.canvas.default_pixel_format();
                     let pitch = pixel_format.byte_size_per_pixel() * width as usize;
                     let rect = rect!(0, 0, width, height);
-
-                    app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
-                    app.canvas.clear();
-                    draw(&mut app, &mut screen);
 
                     let pixels = app.canvas.read_pixels(rect, pixel_format).unwrap();
                     let mut texture = texture_creator
