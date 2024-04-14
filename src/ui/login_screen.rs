@@ -97,8 +97,9 @@ pub fn draw_login(app: &mut App) {
         None,
         None,
     );
-    if link_rect.contains_point(app.mouse_points()) && app.mouse_clicked_left() {
-        app.mouse_clicked_left_unset();
+
+    let link_id = app.create_id(link_rect);
+    if app.click_elem(link_id) {
         open_url("https://anilist.co/api/v2/oauth/authorize?client_id=15365&response_type=token")
             .unwrap();
     }

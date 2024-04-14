@@ -1,3 +1,4 @@
+
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
@@ -16,10 +17,7 @@ use crate::Format;
 
 use super::layout::Layout as _;
 use super::{
-    color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
-    draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions,
-    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
-    TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR,
+    color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail, draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions, INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR
 };
 
 pub const CARD_RAD: i16 = 10;
@@ -75,31 +73,35 @@ fn handle_main_events(
         } else if app.keydown(Keycode::Escape) {
             app.running = false;
         } else if app.keydown(Keycode::F) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            app.main_keyboard_override = true;
-            match &mut app.main_selected {
-                Some(v) => *v = (*v + 1) % card_layouts.len(),
-                None => app.main_selected = Some(0),
-            }
+            // TODO: Select forward
+            //app.main_keyboard_override = true;
+            //match &mut app.main_selected {
+            //    Some(v) => *v = (*v + 1) % card_layouts.len(),
+            //    None => app.main_selected = Some(0),
+            //}
         } else if app.keydown(Keycode::B) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            app.main_keyboard_override = true;
-            match &mut app.main_selected {
-                Some(v) => *v = (*v - 1) % card_layouts.len(),
-                None => app.main_selected = Some(0),
-            }
+            // TODO: Select backwards
+            //app.main_keyboard_override = true;
+            //match &mut app.main_selected {
+            //    Some(v) => *v = (*v - 1) % card_layouts.len(),
+            //    None => app.main_selected = Some(0),
+            //}
         } else if app.keydown(Keycode::N) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            app.main_keyboard_override = true;
-            match &mut app.main_selected {
-                Some(v) if *v + cards_per_row > card_layouts.len() => *v = 0,
-                Some(v) => *v = (*v + cards_per_row) % card_layouts.len(),
-                None => app.main_selected = Some(0),
-            }
+            // TODO: Select down
+            //app.main_keyboard_override = true;
+            //match &mut app.main_selected {
+            //    Some(v) if *v + cards_per_row > card_layouts.len() => *v = 0,
+            //    Some(v) => *v = (*v + cards_per_row) % card_layouts.len(),
+            //    None => app.main_selected = Some(0),
+            //}
         } else if app.keydown(Keycode::P) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            app.main_keyboard_override = true;
-            match &mut app.main_selected {
-                Some(v) if *v < cards_per_row => *v = card_layouts.len(),
-                Some(v) => *v = (*v - cards_per_row) % card_layouts.len(),
-                None => app.main_selected = Some(0),
-            }
+            // TODO: Select up
+            //app.main_keyboard_override = true;
+            //match &mut app.main_selected {
+            //    Some(v) if *v < cards_per_row => *v = card_layouts.len(),
+            //    Some(v) => *v = (*v - cards_per_row) % card_layouts.len(),
+            //    None => app.main_selected = Some(0),
+            //}
         } else if app.keydown(Keycode::Return) {
             if let Some(idx) = app.main_selected {
                 // Should exist
@@ -119,6 +121,8 @@ fn handle_main_search_events(app: &mut App) {
 }
 
 fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
+    let (window_width, window_height) = app.canvas.window().size();
+    let outer_bounds_id = app.create_id(Rect::new(0, 0, window_width, window_height));
     let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
     let anime = &mut app.database.animes()[search_id as usize];
     let options = {
@@ -150,7 +154,8 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
 
     for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
         let option = unsafe { &**option };
-        if draw_option(app, layout, &option.title()) {
+        let option_id = app.create_id(layout);
+        if draw_option(app, option_id, &option.title()) {
             anime.set_metadata(Some((*option).clone()));
             app.database.retrieve_images(&app.thumbnail_path).unwrap();
             app.main_search_anime = None;
@@ -164,8 +169,7 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     let search_y = search_layout.y + 10;
     draw_input_box(app, search_x, search_y, search_width);
 
-    if app.mouse_clicked_left() && !layout.contains_point(app.mouse_points()) {
-        app.mouse_clicked_left_unset();
+    if app.click_elem(outer_bounds_id) {
         app.main_search_anime = None;
         app.main_alias_anime = None;
         app.text_input.clear();
@@ -173,6 +177,9 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
 }
 
 fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
+    let (window_width, window_height) = app.canvas.window().size();
+    let outer_bounds_id = app.create_id(Rect::new(0, 0, window_width, window_height));
+    //let outer_bounds_id = app.create_id(Rect::new(0, 0, 0, 0));
     let anime = &mut app.database.animes()[alias_id as usize];
     let (_, text_height) = app
         .text_manager
@@ -208,7 +215,9 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     draw_input_box(app, search_x, search_y, search_width);
 
     for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
-        if draw_option(app, layout, option) {
+        let option_id = app.create_id(layout);
+        assert!(outer_bounds_id < option_id);
+        if draw_option(app, option_id, option) {
             anime.set_alias(option.to_string());
             app.main_alias_anime = None;
             app.text_input.clear();
@@ -223,23 +232,20 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
         app.input_util.stop();
     }
 
-    if app.mouse_clicked_left() && !layout.contains_point(app.mouse_points()) {
-        app.mouse_clicked_left_unset();
+    if app.click_elem(outer_bounds_id) {
         app.main_search_anime = None;
         app.main_alias_anime = None;
     }
 }
 
-fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
+fn draw_option(app: &mut App, option_id: usize, option: &str) -> bool {
+    let layout = app.rect_id(option_id);
     let font_info = INPUT_BOX_FONT_INFO;
-    if layout.contains_point(app.mouse_points()) {
+    if app.state_id(option_id) {
         app.canvas.set_draw_color(color_hex(0x505050));
         app.canvas.fill_rect(layout).unwrap();
-
-        if app.mouse_clicked_left() {
-            return true;
-        }
     }
+
     let (text_width, text_height) = app.text_manager.text_size(font_info, option);
 
     let side_pad = 5;
@@ -272,7 +278,7 @@ fn draw_option(app: &mut App, layout: Layout, option: &str) -> bool {
         );
     }
 
-    false
+    app.click_elem(option_id)
 }
 
 pub fn draw_main(app: &mut App, layout: Layout) {
@@ -291,7 +297,7 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     } else {
         handle_main_search_events(app);
     }
-    if app.resized() {
+    if app.resized {
         if let Some(last) = card_layouts.last() {
             if (last.y + last.height() as i32) < window_height as i32 {
                 app.main_scroll -= last.y + last.height() as i32 - window_height as i32;
@@ -306,7 +312,6 @@ pub fn draw_main(app: &mut App, layout: Layout) {
             if grid_space.y > window_height as i32 {
                 break;
             }
-            app.id += 1;
             if draw_card(app, anime, idx, *grid_space) {
                 any = true;
             }
@@ -512,6 +517,8 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
 }
 
 fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Layout) -> bool {
+    let card_id = app.create_id(layout);
+    app.main_state.selectable.insert(card_id);
     // draw card background/border
     let mut selected = false;
     //let card_bg_color = color_hex(0x1C1C1C);
@@ -527,11 +534,25 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     // draw thumbnail
     draw_thumbnail(app, anime, image_layout);
 
-    if is_card_selected(app, layout, idx) {
+    if app.click_elem(card_id) {
+        app.episode_scroll = 0;
+        app.main_alias_anime = None;
+        app.main_search_anime = None;
+        app.next_screen = Some(Screen::SelectEpisode(anime));
+    }
+
+    if app.click_elem_right(card_id) {
+        // Toggle extra menu
+        match app.main_extra_menu_id {
+            Some(_) => app.main_extra_menu_id = None,
+            None => app.main_extra_menu_id = Some(app.id as u32),
+        }
+    }
+
+    if layout.contains_point(app.mouse_points()) && app.main_search_anime.is_none() && app.main_alias_anime.is_none() {
         card_fg_color = color_hex(TITLE_HOVER_FONT_COLOR);
         app.canvas.set_blend_mode(BlendMode::Blend);
         selected = true;
-        app.main_selected = Some(idx);
         let image_hover_color = color_hex_a(0x1010108B);
         let image_rect = image_layout;
         app.canvas
@@ -545,26 +566,13 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
             )
             .unwrap();
 
-        if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
+        if app.main_extra_menu_id.is_some_and(|id| id == app.id as u32) {
             draw_card_extra_menu(app, anime, top_layout, idx)
         } else {
             draw_card_hover_menu(app, anime, top_layout)
         };
-        if app.mouse_clicked_right() {
-            // Toggle extra menu
-            match app.main_extra_menu_id {
-                Some(_) => app.main_extra_menu_id = None,
-                None => app.main_extra_menu_id = Some(app.id),
-            }
-        }
 
-        if app.mouse_clicked_left() {
-            app.episode_scroll = 0;
-            app.main_alias_anime = None;
-            app.main_search_anime = None;
-            app.next_screen = Some(Screen::SelectEpisode(anime));
-        }
-    } else if app.main_extra_menu_id.is_some_and(|id| id == app.id) {
+    } else if app.main_extra_menu_id.is_some_and(|id| id == app.id as u32) {
         app.main_extra_menu_id = None;
     }
 

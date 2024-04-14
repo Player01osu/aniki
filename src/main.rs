@@ -8,6 +8,7 @@ use reqwest::RequestBuilder;
 use sdl2::clipboard::ClipboardUtil;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
+use sdl2::mouse::MouseButton;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::ttf::Sdl2TtfContext;
@@ -17,7 +18,7 @@ use sdl2::{
     keyboard::Keycode,
     render::{Canvas, TextureCreator},
 };
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::future::Future;
 use std::path::Path;
@@ -91,10 +92,45 @@ pub enum ConnectionOverlayState {
     Disconnected,
 }
 
+#[derive(Debug)]
+pub struct EpisodeState {
+    episode_scroll: Scroll,
+    selectable: BTreeSet<usize>,
+}
+
+#[derive(Debug)]
+pub struct AliasPopupState {
+    selectable: BTreeSet<usize>,
+}
+
+#[derive(Debug)]
+pub struct TitlePopupState {
+    selectable: BTreeSet<usize>,
+    scroll: Scroll,
+}
+
+pub struct MainState {
+    selectable: BTreeSet<usize>,
+    scroll: Scroll,
+}
+
+impl Scroll {
+    pub fn new() -> Self {
+        Self { id: 0, scroll: 0 }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Scroll {
+    id: usize,
+    scroll: i32,
+}
+
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
     pub clipboard: ClipboardUtil,
     pub next_screen: Option<Screen>,
+    screen: Screen,
     pub input_util: TextInputUtil,
     pub text_manager: TextManager<'a, 'b>,
     pub image_manager: TextureManager<'a>,
@@ -106,11 +142,10 @@ pub struct App<'a, 'b> {
 
     pub mutex: HttpMutex,
 
-    pub id: u32,
-
     pub connection_overlay: ConnectionOverlay,
     pub login_progress: LoginProgress,
 
+    pub main_state: MainState,
     pub main_scroll: i32,
     pub main_selected: Option<usize>,
     pub main_extra_menu_id: Option<u32>,
@@ -119,14 +154,30 @@ pub struct App<'a, 'b> {
     pub main_alias_anime: Option<u32>,
     pub main_search_previous: Option<(String, Box<[*const AnimeDatabaseData]>)>,
 
+    pub episode_state: EpisodeState,
     pub episode_scroll: i32,
 
+    pub alias_popup_state: AliasPopupState,
+    pub title_popup_state: TitlePopupState,
     // bitfield for:
     //   mouse_moved
     //   mouse_clicked_left
     //   mouse_clicked_right
     //   resized
-    state_flag: u8,
+    //state_flag: u8,
+
+    mouse_left_up: bool,
+    mouse_left_down: bool,
+    mouse_right_up: bool,
+    mouse_right_down: bool,
+    mouse_moved: bool,
+    resized: bool,
+
+    id: usize,
+    id_map: Vec<(Rect, bool)>,
+    id_updated: bool,
+    click_id: Option<usize>,
+    click_id_right: Option<usize>,
 
     pub text_input: String,
     pub mouse_x: i32,
@@ -154,6 +205,7 @@ impl<'a, 'b> App<'a, 'b> {
             database,
             input_util,
             next_screen: None,
+            screen: Screen::Main,
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
             string_manager: StringManager::new(),
@@ -163,7 +215,6 @@ impl<'a, 'b> App<'a, 'b> {
 
             show_toolbar: false,
 
-            id: 0,
             mutex: Arc::new(Mutex::new(vec![])),
 
             login_progress: LoginProgress::None,
@@ -172,6 +223,10 @@ impl<'a, 'b> App<'a, 'b> {
                 state: ConnectionOverlayState::Disconnected,
             },
 
+            main_state: MainState {
+                scroll: Scroll::new(),
+                selectable: BTreeSet::new(),
+            },
             main_scroll: 0,
             main_selected: None,
             main_extra_menu_id: None,
@@ -180,15 +235,41 @@ impl<'a, 'b> App<'a, 'b> {
             main_alias_anime: None,
             main_search_previous: None,
 
+            episode_state: EpisodeState {
+                episode_scroll: Scroll::new(),
+                selectable: BTreeSet::new(),
+            },
             episode_scroll: 0,
 
-            state_flag: 0,
+            alias_popup_state: AliasPopupState {
+                selectable: BTreeSet::new(),
+            },
+
+            title_popup_state: TitlePopupState {
+                selectable: BTreeSet::new(),
+                scroll: Scroll::new(),
+            },
+
+            //state_flag: 0,
+            mouse_left_up: false,
+            mouse_left_down: false,
+            mouse_right_up: false,
+            mouse_right_down: false,
+            mouse_moved: false,
+
+            resized: false,
 
             mouse_x: 0,
             mouse_y: 0,
             mouse_scroll_x: 0.0,
             mouse_scroll_y: 0.0,
             mouse_scroll_y_accel: 0.0,
+
+            id: 0,
+            id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
+            id_updated: false,
+            click_id: None,
+            click_id_right: None,
 
             text_input: String::new(),
             keyset: HashSet::new(),
@@ -209,54 +290,117 @@ impl<'a, 'b> App<'a, 'b> {
         self.keyset.contains(&keycode)
     }
 
-    pub fn mouse_click_left_true(&mut self) {
-        self.state_flag |= MOUSE_CLICK_LEFT;
-    }
-
-    pub fn mouse_click_right_true(&mut self) {
-        self.state_flag |= MOUSE_CLICK_RIGHT;
-    }
-
-    pub fn mouse_moved_true(&mut self) {
-        self.state_flag |= MOUSE_MOVED;
-    }
-
-    pub fn resized_true(&mut self) {
-        self.state_flag |= RESIZED;
-    }
-
-    pub fn mouse_clicked_left_unset(&mut self) {
-        self.state_flag &= !MOUSE_CLICK_LEFT;
-    }
-
-    pub fn mouse_clicked_left(&self) -> bool {
-        // This value can only be observed once
-        self.state_flag & MOUSE_CLICK_LEFT != 0
-    }
-
-    pub fn mouse_clicked_right(&self) -> bool {
-        self.state_flag & MOUSE_CLICK_RIGHT != 0
-    }
-
-    pub fn mouse_moved(&self) -> bool {
-        self.state_flag & MOUSE_MOVED != 0
-    }
-
-    pub fn resized(&self) -> bool {
-        self.state_flag & RESIZED != 0
-    }
-
     pub fn reset_frame_state(&mut self) {
-        if self.mouse_moved() {
-            self.main_keyboard_override = false;
-        }
-
         self.mouse_scroll_y_accel = self.mouse_scroll_y_accel / 1.9;
         self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * 4.7 / 5.8;
 
-        self.keyset.clear();
-        self.state_flag = 0;
+        if self.mouse_left_up {
+            self.mouse_left_down = false;
+            self.mouse_left_up = false;
+            self.click_id = None;
+        }
+
+        if self.mouse_right_up {
+            self.mouse_right_down = false;
+            self.mouse_right_up = false;
+            self.click_id = None;
+        }
+
+        self.mouse_update_id();
         self.id = 0;
+
+        self.keyset.clear();
+
+        self.mouse_moved = false;
+        self.resized = false;
+    }
+
+    fn swap_screen(&mut self) {
+        if let Some(next_screen) = self.next_screen.take() {
+            self.screen = next_screen;
+            self.id_map.resize(0, (Rect::new(0, 0, 0, 0), false));
+        }
+    }
+
+    fn mouse_update_id(&mut self) {
+        if self.mouse_moved {
+            let mouse_point = self.mouse_point();
+            self.reset_id();
+            for (region, select) in self.id_map.iter_mut().rev() {
+                if region.contains_point(mouse_point) {
+                    *select = true;
+                    return;
+                }
+            }
+        }
+    }
+
+    fn create_id(&mut self, region: Rect) -> usize {
+        let id = self.id;
+        if id >= self.id_map.len() {
+            self.id_map.push((Rect::new(0, 0, 0, 0), false));
+        }
+        self.id_map[id].0 = region;
+        self.id += 1;
+        return id;
+    }
+
+    fn state_id(&self, id: usize) -> bool {
+        self.id_map[id].1
+    }
+
+    fn register_click(&mut self, id: usize) {
+        if self.mouse_left_down && self.state_id(id) && self.click_id.is_none() {
+            self.click_id = Some(id);
+        }
+    }
+
+    fn register_click_right(&mut self, id: usize) {
+        if self.mouse_right_down && self.state_id(id) && self.click_id.is_none() {
+            self.click_id_right = Some(id);
+        }
+    }
+
+    fn check_click(&self, id: usize) -> bool {
+        self.click_id == Some(id) && self.state_id(id) && self.mouse_left_up
+    }
+
+    fn check_click_right(&self, id: usize) -> bool {
+        self.click_id_right == Some(id) && self.state_id(id) && self.mouse_right_up
+    }
+
+    fn check_return(&self, id: usize) -> bool {
+        self.keyset.contains(&Keycode::Return) && self.state_id(id)
+    }
+
+    fn click_elem(&mut self, id: usize) -> bool {
+        self.register_click(id);
+        self.check_click(id) || self.check_return(id)
+    }
+
+    fn click_elem_right(&mut self, id: usize) -> bool {
+        self.register_click_right(id);
+        self.check_click_right(id)
+    }
+
+    fn mouse_region(&self, region: Rect) -> bool {
+        region.contains_point(self.mouse_point())
+    }
+
+    fn rect_id(&self, id: usize) -> Rect {
+        self.id_map[id].0
+    }
+
+    fn mouse_point(&self) -> (i32, i32) {
+        (self.mouse_x, self.mouse_y)
+    }
+
+    fn reset_id(&mut self) {
+        self.id_map.truncate(self.id);
+        for (_, selected) in self.id_map.iter_mut() {
+            *selected = false;
+        }
+        self.id_updated = false;
     }
 }
 
@@ -443,20 +587,41 @@ async fn main() -> anyhow::Result<()> {
     app.canvas.present();
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
-        if app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus() {
+        // TODO: Id needs to get reset even when the window is not in focus
+        if true || app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus() {
             app.reset_frame_state()
         }
 
         for event in event_pump.poll_iter() {
             canvas_texture = CanvasTexture::Wait(idle_time);
+            app.mouse_moved = event.is_mouse();
+
             match event {
                 Event::Quit { .. } => break 'running,
-                Event::MouseButtonDown { .. } => {}
-                Event::MouseButtonUp {
-                    mouse_btn: sdl2::mouse::MouseButton::Left,
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Left,
                     ..
                 } => {
-                    app.mouse_click_left_true();
+                    app.mouse_left_down = true;
+                }
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Right,
+                    ..
+                } => {
+                    app.mouse_right_down = true;
+                }
+
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Left,
+                    ..
+                } => {
+                    app.mouse_left_up = true;
+                }
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Right,
+                    ..
+                } => {
+                    app.mouse_right_up = true;
                 }
                 Event::MouseWheel {
                     precise_x,
@@ -467,14 +632,7 @@ async fn main() -> anyhow::Result<()> {
                     app.mouse_scroll_y += precise_y * 11.8;
                     app.mouse_scroll_x += precise_x * 8.3;
                 }
-                Event::MouseButtonUp {
-                    mouse_btn: sdl2::mouse::MouseButton::Right,
-                    ..
-                } => {
-                    app.mouse_click_right_true();
-                }
                 Event::MouseMotion { x, y, .. } => {
-                    app.mouse_moved_true();
                     app.mouse_x = x;
                     app.mouse_y = y;
                 }
@@ -486,19 +644,11 @@ async fn main() -> anyhow::Result<()> {
                     app.keyset.insert(keycode);
                     app.keymod = keymod;
                 }
-                Event::KeyUp {
-                    keycode: Some(keycode),
-                    keymod,
-                    ..
-                } => {
-                    app.keyset.insert(keycode);
-                    app.keymod = keymod;
-                }
                 Event::Window {
                     win_event: sdl2::event::WindowEvent::Resized(_, _),
                     ..
                 } => {
-                    app.resized_true();
+                    app.resized = true;
                     app.mouse_x = 0;
                     app.mouse_y = 0;
                 }

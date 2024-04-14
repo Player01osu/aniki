@@ -264,21 +264,22 @@ fn draw_episode(
         .pad_right(5)
         .split_vert(play_width * layout.height() / play_height, layout.width());
     let ep_name_layout = ep_name_layout.pad_left(30);
-    if layout.contains_point(app.mouse_points())
-        && clip_rect.contains_point(app.mouse_points())
-    {
+    let id = app.create_id(layout);
+    app.episode_state.selectable.insert(id);
+
+    if app.state_id(id) {
         app.canvas.set_draw_color(color_hex(0x4A4A4A));
         app.canvas.fill_rect(layout).unwrap();
-        if app.mouse_clicked_left() {
-            let anime = app.database.get_anime(anime.filename()).unwrap();
-            anime.update_watched(episode.to_owned()).unwrap();
-            let paths = anime.find_episode_path(&episode);
-            app.episode_scroll = 0;
-            open_url(&paths[0]).unwrap();
+    }
+    if app.click_elem(id) {
+        let anime = app.database.get_anime(anime.filename()).unwrap();
+        anime.update_watched(episode.to_owned()).unwrap();
+        let paths = anime.find_episode_path(&episode);
+        app.episode_scroll = 0;
+        open_url(&paths[0]).unwrap();
 
-            if let Some(access_token) = app.database.anilist_access_token() {
-                update_anilist_watched(&app.mutex, &access_token, anime);
-            }
+        if let Some(access_token) = app.database.anilist_access_token() {
+            update_anilist_watched(&app.mutex, &access_token, anime);
         }
     }
     let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)), None, None);

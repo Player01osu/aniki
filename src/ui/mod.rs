@@ -855,6 +855,7 @@ impl Style {
 
 /// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
+    let button_id = app.create_id(layout);
     let button_rect = layout;
     let (text_width, _text_height) = text_size(&mut app.text_manager, style.font_info, text);
     let text = if text_width > layout.width() {
@@ -864,7 +865,7 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
     };
 
     let (button_fg_color, button_bg_color) =
-        if layout.contains_point((app.mouse_x, app.mouse_y)) {
+        if app.state_id(button_id) {
             (style.fg_hover_color, style.bg_hover_color)
         } else {
             (style.fg_color, style.bg_color)
@@ -900,14 +901,7 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
         None,
     );
 
-    let clicked = app.mouse_clicked_left();
-    let in_bounds = layout.contains_point(app.mouse_points());
-    if clicked && in_bounds {
-        app.mouse_clicked_left_unset();
-        true
-    } else {
-        false
-    }
+    app.click_elem(button_id)
 }
 
 fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
@@ -1077,6 +1071,11 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     }
 
     if let Some(next_screen) = app.next_screen.take() {
+        for (rect, selected) in app.id_map.iter_mut().rev() {
+            if *selected {
+                *rect = Rect::new(0, 0, 0, 0);
+            }
+        }
         *screen = next_screen;
     }
 }
