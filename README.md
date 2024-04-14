@@ -1,9 +1,11 @@
 
 # Aniki
 
-##### Warning: This is unfinished software! Don't expect everything to be there, but I appreciate any feedback and bug reports.
+##### Warning: This is unfinished software! Don't expect everything to be there! Feedback and bug reports are appreciated.
 
 Watch and keep track of anime.
+
+(Written アニ記)
 
 ## Features
 
@@ -41,6 +43,8 @@ change anime
 
 ### Coming Soon
 
+- Configure directly in app
+
 - Get synopsis from anilist/mal
 
 - Sync with mal
@@ -67,12 +71,10 @@ cargo b --release
 
 ## Motivation
 
-I need something to keep track of anime I watch and collect them into an fast
-and easy to use UI.
+A small program that can organize and track my Anime in a clean and simple UI.
 
 ## Todo
 
-- [ ] Optimize: Probably with using OpenGL calls manually
 - [ ] Cleanup
 - [ ] Statically Link
 
