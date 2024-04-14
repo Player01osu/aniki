@@ -478,13 +478,6 @@ impl<'a> Database<'a> {
         let path = path.as_ref();
         match std::fs::read(path) {
             Ok(v) => {
-                // TODO: Large bottleneck at startup!
-                //
-                // On my machine with 35 folders, it takes 100ms to deserialize
-                // in release mode.
-                //
-                // Honestly consider developing my own binary format because most
-                // other options are way too limited or way too slow.
                 let mut db = flexbuffers::from_slice::<Self>(&v)?;
 
                 // Check if directory has been updated
