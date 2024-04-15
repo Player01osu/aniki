@@ -1,4 +1,3 @@
-
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
@@ -8,16 +7,19 @@ use sdl2::{
 };
 
 use crate::database::json_database::AnimeDatabaseData;
+use crate::Format;
 use crate::{
     database, rect,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
-use crate::Format;
 
 use super::layout::Layout as _;
 use super::{
-    color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail, draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions, INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR, TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR
+    color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
+    draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions,
+    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
+    TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR,
 };
 
 pub const CARD_RAD: i16 = 10;
@@ -43,31 +45,32 @@ fn handle_main_events(
         let card_height = last.y + last.height() as i32;
         if app.mouse_scroll_y < 0.0 && card_height > max_height {
             let overflow = (max_height - card_height - app.mouse_scroll_y as i32).max(0);
-            app.main_scroll = app.main_scroll + app.mouse_scroll_y as i32 + overflow;
+            app.main_state.scroll.scroll =
+                app.main_state.scroll.scroll + app.mouse_scroll_y as i32 + overflow;
         }
     }
 
     if let Some(first) = card_layouts.first() {
         let min_height = CARD_Y_PAD_OUTER;
         if app.mouse_scroll_y > 0.0 && first.y < min_height {
-            app.main_scroll = (app.main_scroll + app.mouse_scroll_y as i32).min(min_height);
+            app.main_state.scroll.scroll = (app.main_state.scroll.scroll + app.mouse_scroll_y as i32).min(min_height);
         }
     }
 
-    if app.main_search_anime.is_none() {
+    if app.main_state.search_anime.is_none() {
         if app.keydown(Keycode::J) {
             if let Some(last) = card_layouts.last() {
                 let max_height = layout.height() as i32;
                 let card_height = last.y + last.height() as i32;
                 if card_height > max_height {
                     let overflow = (max_height - card_height + 40).max(0);
-                    app.main_scroll = app.main_scroll - 40 + overflow;
+                    app.main_state.scroll.scroll = app.main_state.scroll.scroll - 40 + overflow;
                 }
             }
         } else if app.keydown(Keycode::K) {
             if let Some(first) = card_layouts.first() {
                 if first.y < CARD_Y_PAD_OUTER {
-                    app.main_scroll += 40;
+                    app.main_state.scroll.scroll += 40;
                 }
             }
         } else if app.keydown(Keycode::Escape) {
@@ -103,7 +106,7 @@ fn handle_main_events(
             //    None => app.main_selected = Some(0),
             //}
         } else if app.keydown(Keycode::Return) {
-            if let Some(idx) = app.main_selected {
+            if let Some(idx) = app.main_state.selected {
                 // Should exist
                 let anime = unsafe { app.database.animes().get_unchecked(idx) };
                 app.next_screen = Some(Screen::SelectEpisode(*anime));
@@ -114,20 +117,19 @@ fn handle_main_events(
 
 fn handle_main_search_events(app: &mut App) {
     if app.keydown(Keycode::Escape) {
-        app.main_search_anime = None;
-        app.main_alias_anime = None;
+        app.main_state.search_anime = None;
+        app.main_state.alias_anime = None;
         app.input_util.stop();
     }
 }
 
 fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
-    let (window_width, window_height) = app.canvas.window().size();
-    let outer_bounds_id = app.create_id(Rect::new(0, 0, window_width, window_height));
+    let outer_bounds_id = app.create_id(app.window_rect());
     let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
     let anime = &mut app.database.animes()[search_id as usize];
     let options = {
         let search_previous: &mut Option<(String, Box<[*const AnimeDatabaseData]>)> =
-            unsafe { &mut *(&mut app.main_search_previous as *mut _) };
+            unsafe { &mut *(&mut app.main_state.search_previous as *mut _) };
         match search_previous {
             Some(prev) if prev.0 == app.text_input => &prev.1,
             _ => {
@@ -158,7 +160,7 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
         if draw_option(app, option_id, &option.title()) {
             anime.set_metadata(Some((*option).clone()));
             app.database.retrieve_images(&app.thumbnail_path).unwrap();
-            app.main_search_anime = None;
+            app.main_state.search_anime = None;
             app.input_util.stop();
             return;
         }
@@ -170,15 +172,14 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     draw_input_box(app, search_x, search_y, search_width);
 
     if app.click_elem(outer_bounds_id) {
-        app.main_search_anime = None;
-        app.main_alias_anime = None;
+        app.main_state.search_anime = None;
+        app.main_state.alias_anime = None;
         app.text_input.clear();
     }
 }
 
 fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
-    let (window_width, window_height) = app.canvas.window().size();
-    let outer_bounds_id = app.create_id(Rect::new(0, 0, window_width, window_height));
+    let outer_bounds_id = app.create_id(app.window_rect());
     //let outer_bounds_id = app.create_id(Rect::new(0, 0, 0, 0));
     let anime = &mut app.database.animes()[alias_id as usize];
     let (_, text_height) = app
@@ -219,7 +220,7 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
         assert!(outer_bounds_id < option_id);
         if draw_option(app, option_id, option) {
             anime.set_alias(option.to_string());
-            app.main_alias_anime = None;
+            app.main_state.alias_anime = None;
             app.text_input.clear();
             app.input_util.stop();
         }
@@ -227,14 +228,14 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
 
     if app.keydown(Keycode::Return) {
         anime.set_alias(app.text_input.clone());
-        app.main_alias_anime = None;
+        app.main_state.alias_anime = None;
         app.text_input.clear();
         app.input_util.stop();
     }
 
     if app.click_elem(outer_bounds_id) {
-        app.main_search_anime = None;
-        app.main_alias_anime = None;
+        app.main_state.search_anime = None;
+        app.main_state.alias_anime = None;
     }
 }
 
@@ -288,11 +289,11 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     let (cards_per_row, card_layouts) = card_layouts
         .pad_top(CARD_Y_PAD_OUTER)
         .pad_bottom(CARD_Y_PAD_OUTER)
-        .scroll_y(app.main_scroll)
+        .scroll_y(app.main_state.scroll.scroll)
         .split_grid_center(CARD_WIDTH, CARD_HEIGHT, CARD_X_PAD_INNER, CARD_Y_PAD_INNER);
     let card_layouts = card_layouts.take(app.database.len()).collect::<Vec<_>>();
 
-    if app.main_search_anime.is_none() && app.main_alias_anime.is_none() {
+    if app.main_state.search_anime.is_none() && app.main_state.alias_anime.is_none() {
         handle_main_events(app, layout, &card_layouts, cards_per_row);
     } else {
         handle_main_search_events(app);
@@ -300,7 +301,7 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     if app.resized {
         if let Some(last) = card_layouts.last() {
             if (last.y + last.height() as i32) < window_height as i32 {
-                app.main_scroll -= last.y + last.height() as i32 - window_height as i32;
+                app.main_state.scroll.scroll -= last.y + last.height() as i32 - window_height as i32;
             }
         }
     }
@@ -320,30 +321,30 @@ pub fn draw_main(app: &mut App, layout: Layout) {
 
     // Draw scrollbar
     if let Some(last) = card_layouts.last() {
-        let scale =
-            scrollbar_layout.height() as f32 / (last.y + last.height() as i32 - app.main_scroll) as f32;
+        let scale = scrollbar_layout.height() as f32
+            / (last.y + last.height() as i32 - app.main_state.scroll.scroll) as f32;
         if scale < 1.0 {
             let height = (scrollbar_layout.height() as f32 * scale) as u32;
             app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
             app.canvas
                 .fill_rect(rect!(
                     scrollbar_layout.x,
-                    scrollbar_layout.y + (-1.0 * app.main_scroll as f32 * scale) as i32,
+                    scrollbar_layout.y + (-1.0 * app.main_state.scroll.scroll as f32 * scale) as i32,
                     scrollbar_layout.width(),
                     height
                 ))
                 .unwrap();
         } else {
-            app.main_scroll = 0;
+            app.main_state.scroll.scroll = 0;
         }
     }
 
     if !any {
-        app.main_selected = None;
+        app.main_state.selected = None;
     }
 
     // Draw search
-    if let Some(search_id) = app.main_search_anime {
+    if let Some(search_id) = app.main_state.search_anime {
         let width = window_width * 4 / 5;
         let height = window_height * 4 / 5;
         let x = (window_width - width) / 2;
@@ -354,7 +355,7 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     }
 
     // Draw alias
-    if let Some(alias_id) = app.main_alias_anime {
+    if let Some(alias_id) = app.main_state.alias_anime {
         //let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
         let width = window_width * 2 / 5;
         let height = 300;
@@ -379,9 +380,7 @@ pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradie
         .unwrap();
 
     app.canvas.set_blend_mode(BlendMode::Blend);
-    app.canvas
-        .copy(texture.as_ref(), None, layout)
-        .unwrap();
+    app.canvas.copy(texture.as_ref(), None, layout).unwrap();
 }
 
 fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
@@ -397,9 +396,9 @@ fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
 }
 
 fn is_card_selected(app: &mut App, layout: Layout, idx: usize) -> bool {
-    ((!app.main_keyboard_override && layout.contains_point(app.mouse_points()))
-        || (app.main_keyboard_override && app.main_selected.is_some_and(|i| i == idx)))
-        && (app.main_search_anime.is_none() && app.main_alias_anime.is_none())
+    ((!app.main_state.keyboard_override && layout.contains_point(app.mouse_points()))
+        || (app.main_state.keyboard_override && app.main_state.selected.is_some_and(|i| i == idx)))
+        && (app.main_state.search_anime.is_none() && app.main_state.alias_anime.is_none())
 }
 
 fn draw_card_extra_menu(
@@ -430,7 +429,7 @@ fn draw_card_extra_menu(
     ) {
         clicked = true;
         app.text_input.clear();
-        app.main_search_anime = Some(idx as u32);
+        app.main_state.search_anime = Some(idx as u32);
     }
 
     if draw_button(
@@ -441,7 +440,7 @@ fn draw_card_extra_menu(
     ) {
         clicked = true;
         app.text_input = anime.display_title().to_owned();
-        app.main_alias_anime = Some(idx as u32);
+        app.main_state.alias_anime = Some(idx as u32);
     }
 
     if draw_button(
@@ -493,7 +492,7 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
             update_anilist_watched(&app.mutex, access_token, anime);
         }
 
-        app.main_scroll = 0;
+        app.main_state.scroll.scroll = 0;
     }
 
     if let Some((ep, path)) = anime.next_episode_path().unwrap() {
@@ -506,7 +505,7 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
             clicked = true;
             open_url(&path[0]).unwrap();
             anime.update_watched(ep).unwrap();
-            app.main_scroll = 0;
+            app.main_state.scroll.scroll = 0;
 
             if let Some(access_token) = app.database.anilist_access_token() {
                 update_anilist_watched(&app.mutex, access_token, anime);
@@ -535,21 +534,24 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     draw_thumbnail(app, anime, image_layout);
 
     if app.click_elem(card_id) {
-        app.episode_scroll = 0;
-        app.main_alias_anime = None;
-        app.main_search_anime = None;
+        app.episode_state.episode_scroll.scroll = 0;
+        app.main_state.alias_anime = None;
+        app.main_state.search_anime = None;
         app.next_screen = Some(Screen::SelectEpisode(anime));
     }
 
     if app.click_elem_right(card_id) {
         // Toggle extra menu
-        match app.main_extra_menu_id {
-            Some(_) => app.main_extra_menu_id = None,
-            None => app.main_extra_menu_id = Some(app.id as u32),
+        match app.main_state.extra_menu_id {
+            Some(_) => app.main_state.extra_menu_id = None,
+            None => app.main_state.extra_menu_id = Some(app.id as u32),
         }
     }
 
-    if layout.contains_point(app.mouse_points()) && app.main_search_anime.is_none() && app.main_alias_anime.is_none() {
+    if layout.contains_point(app.mouse_points())
+        && app.main_state.search_anime.is_none()
+        && app.main_state.alias_anime.is_none()
+    {
         card_fg_color = color_hex(TITLE_HOVER_FONT_COLOR);
         app.canvas.set_blend_mode(BlendMode::Blend);
         selected = true;
@@ -566,14 +568,13 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
             )
             .unwrap();
 
-        if app.main_extra_menu_id.is_some_and(|id| id == app.id as u32) {
+        if app.main_state.extra_menu_id.is_some_and(|id| id == app.id as u32) {
             draw_card_extra_menu(app, anime, top_layout, idx)
         } else {
             draw_card_hover_menu(app, anime, top_layout)
         };
-
-    } else if app.main_extra_menu_id.is_some_and(|id| id == app.id as u32) {
-        app.main_extra_menu_id = None;
+    } else if app.main_state.extra_menu_id.is_some_and(|id| id == app.id as u32) {
+        app.main_state.extra_menu_id = None;
     }
 
     // draw title background

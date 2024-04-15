@@ -110,8 +110,14 @@ pub struct TitlePopupState {
 }
 
 pub struct MainState {
-    selectable: BTreeSet<usize>,
-    scroll: Scroll,
+    pub selectable: BTreeSet<usize>,
+    pub scroll: Scroll,
+    pub selected: Option<usize>,
+    pub extra_menu_id: Option<u32>,
+    pub keyboard_override: bool,
+    pub search_anime: Option<u32>,
+    pub alias_anime: Option<u32>,
+    pub search_previous: Option<(String, Box<[*const AnimeDatabaseData]>)>,
 }
 
 impl Scroll {
@@ -121,9 +127,9 @@ impl Scroll {
 }
 
 #[derive(Debug, Clone)]
-struct Scroll {
-    id: usize,
-    scroll: i32,
+pub struct Scroll {
+    pub id: usize,
+    pub scroll: i32,
 }
 
 pub struct App<'a, 'b> {
@@ -146,16 +152,7 @@ pub struct App<'a, 'b> {
     pub login_progress: LoginProgress,
 
     pub main_state: MainState,
-    pub main_scroll: i32,
-    pub main_selected: Option<usize>,
-    pub main_extra_menu_id: Option<u32>,
-    pub main_keyboard_override: bool,
-    pub main_search_anime: Option<u32>,
-    pub main_alias_anime: Option<u32>,
-    pub main_search_previous: Option<(String, Box<[*const AnimeDatabaseData]>)>,
-
     pub episode_state: EpisodeState,
-    pub episode_scroll: i32,
 
     pub alias_popup_state: AliasPopupState,
     pub title_popup_state: TitlePopupState,
@@ -226,20 +223,18 @@ impl<'a, 'b> App<'a, 'b> {
             main_state: MainState {
                 scroll: Scroll::new(),
                 selectable: BTreeSet::new(),
+                selected: None,
+                extra_menu_id: None,
+                keyboard_override: false,
+                search_anime: None,
+                alias_anime: None,
+                search_previous: None,
             },
-            main_scroll: 0,
-            main_selected: None,
-            main_extra_menu_id: None,
-            main_keyboard_override: false,
-            main_search_anime: None,
-            main_alias_anime: None,
-            main_search_previous: None,
 
             episode_state: EpisodeState {
                 episode_scroll: Scroll::new(),
                 selectable: BTreeSet::new(),
             },
-            episode_scroll: 0,
 
             alias_popup_state: AliasPopupState {
                 selectable: BTreeSet::new(),
@@ -401,6 +396,11 @@ impl<'a, 'b> App<'a, 'b> {
             *selected = false;
         }
         self.id_updated = false;
+    }
+
+    fn window_rect(&self) -> Rect {
+        let (width, height) = self.canvas.window().size();
+        rect!(0, 0, width, height)
     }
 }
 
@@ -674,9 +674,7 @@ async fn main() -> anyhow::Result<()> {
                     let (width, height) = app.canvas.window().size();
                     let pixel_format = app.canvas.default_pixel_format();
                     let pitch = pixel_format.byte_size_per_pixel() * width as usize;
-                    let rect = rect!(0, 0, width, height);
-
-                    let pixels = app.canvas.read_pixels(rect, pixel_format).unwrap();
+                    let pixels = app.canvas.read_pixels(app.window_rect(), pixel_format).unwrap();
                     let mut texture = texture_creator
                         .create_texture_static(pixel_format, width, height)
                         .unwrap();

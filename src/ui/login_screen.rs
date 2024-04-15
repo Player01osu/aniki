@@ -61,8 +61,7 @@ pub fn draw_login(app: &mut App) {
         app.next_screen = Some(Screen::Main);
     }
 
-    let (window_width, window_height) = app.canvas.window().size();
-    let layout = Rect::new(0, 0, window_width, window_height);
+    let layout = app.window_rect();
     let (header_layout, rest) = layout.split_hori(1, 4);
     let (header_layout, link_layout) = header_layout.split_hori(1, 2);
 

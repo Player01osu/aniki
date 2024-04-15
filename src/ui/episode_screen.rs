@@ -36,7 +36,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Rect) {
     let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
     let (layout, scrollbar_layout) = layout.split_vert(796, 800);
     let layouts = layout
-        .scroll_y(app.episode_scroll)
+        .scroll_y(app.episode_state.episode_scroll.scroll)
         .split_even_hori(episode_height)
         .take(episode_count)
         .collect::<Box<[Rect]>>();
@@ -47,27 +47,27 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Rect) {
         let height = last.y + last.height() as i32;
         if app.mouse_scroll_y < 0.0 && height > max_height {
             let overflow = (max_height - height - app.mouse_scroll_y as i32).max(0);
-            app.episode_scroll = app.episode_scroll + app.mouse_scroll_y as i32 + overflow;
+            app.episode_state.episode_scroll.scroll = app.episode_state.episode_scroll.scroll + app.mouse_scroll_y as i32 + overflow;
         }
     }
 
     if let Some(first) = layouts.first() {
         let min_height = layout.y;
         if app.mouse_scroll_y > 0.0 && first.y < min_height {
-            app.episode_scroll = (app.episode_scroll + app.mouse_scroll_y as i32).min(0);
+            app.episode_state.episode_scroll.scroll = (app.episode_state.episode_scroll.scroll + app.mouse_scroll_y as i32).min(0);
         }
     }
 
     if app.keydown(Keycode::J) {
         if let Some(last) = layouts.last() {
             if last.y + last.height() as i32 > layout.y + layout.height() as i32 {
-                app.episode_scroll -= 40;
+                app.episode_state.episode_scroll.scroll -= 40;
             }
         }
     } else if app.keydown(Keycode::K) {
         if let Some(first) = layouts.into_iter().next() {
             if first.y < layout.y {
-                app.episode_scroll += 40;
+                app.episode_state.episode_scroll.scroll += 40;
             }
         }
     } else if app.keydown(Keycode::Escape) {
@@ -123,13 +123,13 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Rect) {
         app.canvas
             .fill_rect(rect!(
                 scrollbar_layout.x,
-                scrollbar_layout.y + (-1.0 * app.episode_scroll as f32 * scale) as i32,
+                scrollbar_layout.y + (-1.0 * app.episode_state.episode_scroll.scroll as f32 * scale) as i32,
                 scrollbar_layout.width(),
                 height
             ))
             .unwrap();
     } else {
-        app.episode_scroll = 0;
+        app.episode_state.episode_scroll.scroll = 0;
     }
 }
 
@@ -275,7 +275,7 @@ fn draw_episode(
         let anime = app.database.get_anime(anime.filename()).unwrap();
         anime.update_watched(episode.to_owned()).unwrap();
         let paths = anime.find_episode_path(&episode);
-        app.episode_scroll = 0;
+        app.episode_state.episode_scroll.scroll = 0;
         open_url(&paths[0]).unwrap();
 
         if let Some(access_token) = app.database.anilist_access_token() {
