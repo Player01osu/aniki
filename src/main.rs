@@ -522,6 +522,24 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Config::parse_cfg();
     let mut args = std::env::args();
     let program_name = args.next().unwrap_or(String::from("aniki"));
+
+    let mut prev_time = std::time::Instant::now();
+    let mut avg_time = [0.0; 60];
+    let mut frame_num = 0;
+    let mut show_fps_time = std::time::Instant::now();
+    let mut show_fps = false;
+
+    for arg in args {
+        match arg.as_str() {
+            "-f" | "--show-fps" => {
+                show_fps = true;
+            }
+            _ => {
+                bail!("{program_name}:unknown argument:{arg}");
+            }
+        }
+    }
+
     let database_path = cfg.database_path().to_string_lossy();
     let thumbnail_path = cfg.thumbnail_path().to_string_lossy();
     let video_paths = cfg
@@ -546,8 +564,11 @@ async fn main() -> anyhow::Result<()> {
     let input_util = video_subsystem.text_input();
     input_util.stop();
 
-    //let mut canvas = window.into_canvas().present_vsync().accelerated().build()?;
-    let mut canvas = window.into_canvas().accelerated().build()?;
+    let mut canvas = if show_fps {
+        window.into_canvas().accelerated().build()?
+    } else {
+        window.into_canvas().present_vsync().accelerated().build()?
+    };
     canvas.window_mut().set_minimum_size(700, 500)?;
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
     let texture_creator = canvas.texture_creator();
@@ -589,24 +610,6 @@ async fn main() -> anyhow::Result<()> {
 
     app.canvas.clear();
     app.canvas.present();
-
-    let mut prev_time = std::time::Instant::now();
-    let mut avg_time = [0.0; 60];
-    let mut frame_num = 0;
-    let mut show_fps_time = std::time::Instant::now();
-    let mut show_fps = false;
-
-    for arg in args {
-        match arg.as_str() {
-            "-f" | "--show-fps" => {
-                show_fps = true;
-            }
-            _ => {
-                bail!("{program_name}:unknown argument:{arg}");
-            }
-        }
-    }
-
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
         // TODO: Id needs to get reset even when the window is not in focus
@@ -720,8 +723,8 @@ async fn main() -> anyhow::Result<()> {
             }
 
             frame_num = (frame_num + 1) % avg_time.len();
-            prev_time = std::time::Instant::now();
         }
+        prev_time = std::time::Instant::now();
 
         if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
