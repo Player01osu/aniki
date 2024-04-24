@@ -146,7 +146,7 @@ pub struct App<'a, 'b> {
     pub database: Database<'a>,
     pub running: bool,
     pub show_toolbar: bool,
-    pub prev_time: std::time::Instant,
+    pub frametime: std::time::Duration,
 
     pub mutex: HttpMutex,
 
@@ -171,6 +171,8 @@ pub struct App<'a, 'b> {
     mouse_right_down: bool,
     mouse_moved: bool,
     resized: bool,
+
+    weights: ScrollWeights,
 
     id: usize,
     id_map: Vec<(Rect, bool)>,
@@ -208,7 +210,7 @@ impl<'a, 'b> App<'a, 'b> {
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
             string_manager: StringManager::new(),
-            prev_time: std::time::Instant::now(),
+            frametime: std::time::Duration::default(),
 
             running: true,
             thumbnail_path,
@@ -255,6 +257,13 @@ impl<'a, 'b> App<'a, 'b> {
             mouse_right_down: false,
             mouse_moved: false,
 
+            weights: ScrollWeights {
+                accel: 10.990031,
+                accel_accel: 1.9800003,
+                deccel_deccel: 3.119999,
+                deccel: 1.3700006,
+            },
+
             resized: false,
 
             mouse_x: 0,
@@ -288,9 +297,13 @@ impl<'a, 'b> App<'a, 'b> {
         self.keyset.contains(&keycode)
     }
 
+    pub fn frametime_frac(&self) -> f32 {
+        (self.frametime.as_micros() / 16) as f32 / 1200.0
+    }
+
     pub fn reset_frame_state(&mut self) {
-        self.mouse_scroll_y_accel = self.mouse_scroll_y_accel / 1.9;
-        self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * 4.7 / 5.8;
+        self.mouse_scroll_y_accel = self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel_deccel;
+        self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel;
 
         if self.mouse_left_up {
             self.mouse_left_down = false;
@@ -493,6 +506,14 @@ fn poll_http(app: &mut App) {
     }
 }
 
+#[derive(Debug)]
+struct ScrollWeights {
+    accel: f32,
+    accel_accel: f32,
+    deccel_deccel: f32,
+    deccel: f32,
+}
+
 pub fn send_request<Fut>(
     mutex: &HttpMutex,
     request: RequestBuilder,
@@ -518,6 +539,10 @@ pub enum HttpData {
     Debug(String),
 }
 
+fn scroll_func(x: f32) -> f32 {
+    x
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     lock_file()?;
@@ -528,6 +553,7 @@ async fn main() -> anyhow::Result<()> {
     let mut avg_time = [0.0; 60];
     let mut frame_num = 0;
     let mut show_fps_time = std::time::Instant::now();
+    let mut prev_time = std::time::Instant::now();
     let mut show_fps = false;
 
     for arg in args {
@@ -654,9 +680,11 @@ async fn main() -> anyhow::Result<()> {
                     precise_y,
                     ..
                 } => {
-                    app.mouse_scroll_y_accel += 0.4;
-                    app.mouse_scroll_y += precise_y * 11.8;
-                    app.mouse_scroll_x += precise_x * 8.3;
+                    if app.mouse_scroll_y.abs() <= 80.0 {
+                        app.mouse_scroll_y_accel += app.weights.accel_accel * app.frametime_frac();
+                        app.mouse_scroll_y += precise_y.signum() * scroll_func((precise_y * app.weights.accel).abs()) * app.frametime_frac();
+                    }
+                    app.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
                 }
                 Event::MouseMotion { x, y, .. } => {
                     app.mouse_x = x;
@@ -713,7 +741,7 @@ async fn main() -> anyhow::Result<()> {
         app.canvas.present();
 
         if show_fps {
-            let time = app.prev_time.elapsed().as_secs_f64();
+            let time = prev_time.elapsed().as_secs_f64();
             avg_time[frame_num] = time;
             if show_fps_time.elapsed().as_secs() == 1 {
                 show_fps_time = std::time::Instant::now();
@@ -725,8 +753,53 @@ async fn main() -> anyhow::Result<()> {
 
             frame_num = (frame_num + 1) % avg_time.len();
         }
-        app.prev_time = std::time::Instant::now();
 
+        if false {
+            let mut scroll_change = 0.01;
+            if app.keydown(Keycode::A) {
+                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                    scroll_change *= -1.0;
+                }
+                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                    scroll_change *= 10.0;
+                }
+                app.weights.accel += scroll_change;
+                dbg!(&app.weights);
+            }
+            if app.keydown(Keycode::S) {
+                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                    scroll_change *= -1.0;
+                }
+                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                    scroll_change *= 10.0;
+                }
+                app.weights.accel_accel += scroll_change;
+                dbg!(&app.weights);
+            }
+            if app.keydown(Keycode::D) {
+                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                    scroll_change *= -1.0;
+                }
+                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                    scroll_change *= 10.0;
+                }
+                app.weights.deccel += scroll_change;
+                dbg!(&app.weights);
+            }
+            if app.keydown(Keycode::F) {
+                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                    scroll_change *= -1.0;
+                }
+                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                    scroll_change *= 10.0;
+                }
+                app.weights.deccel_deccel += scroll_change;
+                dbg!(&app.weights);
+            }
+        }
+
+        app.frametime = prev_time.elapsed();
+        prev_time = std::time::Instant::now();
         if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
         }
