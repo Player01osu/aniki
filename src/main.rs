@@ -146,6 +146,7 @@ pub struct App<'a, 'b> {
     pub database: Database<'a>,
     pub running: bool,
     pub show_toolbar: bool,
+    pub prev_time: std::time::Instant,
 
     pub mutex: HttpMutex,
 
@@ -207,6 +208,7 @@ impl<'a, 'b> App<'a, 'b> {
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
             string_manager: StringManager::new(),
+            prev_time: std::time::Instant::now(),
 
             running: true,
             thumbnail_path,
@@ -523,7 +525,6 @@ async fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();
     let program_name = args.next().unwrap_or(String::from("aniki"));
 
-    let mut prev_time = std::time::Instant::now();
     let mut avg_time = [0.0; 60];
     let mut frame_num = 0;
     let mut show_fps_time = std::time::Instant::now();
@@ -712,7 +713,7 @@ async fn main() -> anyhow::Result<()> {
         app.canvas.present();
 
         if show_fps {
-            let time = prev_time.elapsed().as_secs_f64();
+            let time = app.prev_time.elapsed().as_secs_f64();
             avg_time[frame_num] = time;
             if show_fps_time.elapsed().as_secs() == 1 {
                 show_fps_time = std::time::Instant::now();
@@ -724,7 +725,7 @@ async fn main() -> anyhow::Result<()> {
 
             frame_num = (frame_num + 1) % avg_time.len();
         }
-        prev_time = std::time::Instant::now();
+        app.prev_time = std::time::Instant::now();
 
         if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
