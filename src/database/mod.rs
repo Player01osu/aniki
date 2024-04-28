@@ -23,7 +23,7 @@ use self::json_database::{AnimeDatabaseData, JsonIndexed};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anime {
     filename: String,
-    path: String,
+    paths: Box<[String]>,
     last_watched: u64,
     last_updated: u64,
     current_episode: Episode,
@@ -149,7 +149,7 @@ impl Anime {
         let path = path.as_ref();
         let mut anime = Anime {
             filename: file_name,
-            path: o_to_str!(path),
+            paths: vec![o_to_str!(path).into()].into(),
             last_watched: 0,
             last_updated: time,
             current_episode: Episode::from((1, 1)),
@@ -162,8 +162,8 @@ impl Anime {
         anime
     }
 
-    pub fn path(&self) -> &str {
-        &self.path
+    pub fn paths(&self) -> &Box<[String]> {
+        &self.paths
     }
 
     pub fn metadata(&self) -> &Option<AnimeDatabaseData> {
@@ -206,6 +206,10 @@ impl Anime {
 
     pub fn last_watched(&self) -> u64 {
         self.last_watched
+    }
+
+    pub fn as_ptr_id(&self) -> u64 {
+        (self as *const Anime) as u64
     }
 
     fn set_progress(&mut self, progress: u32) {
@@ -278,34 +282,36 @@ impl Anime {
     }
 
     pub fn update_episodes(&mut self) {
-        WalkDir::new(&self.path)
-            .max_depth(5)
-            .min_depth(1)
-            .into_iter()
-            .filter_map(|d| d.ok()) // Report directory not found
-            .filter(|d| {
-                d.file_type().is_file()
-                    && d.path()
-                        .extension()
-                        .map(|e| matches!(e.to_str(), Some("mkv") | Some("mp4") | Some("ts")))
-                        .unwrap_or(false)
-            })
-            .filter_map(|dir_entry| {
-                let episode = Episode::try_from(dir_entry.path()).ok()?;
-                let path = dir_entry.path().to_str()?.to_owned();
+        for path in self.paths.iter() {
+            WalkDir::new(path)
+                .max_depth(5)
+                .min_depth(1)
+                .into_iter()
+                .filter_map(|d| d.ok()) // Report directory not found
+                .filter(|d| {
+                    d.file_type().is_file()
+                        && d.path()
+                            .extension()
+                            .map(|e| matches!(e.to_str(), Some("mkv") | Some("mp4") | Some("ts")))
+                            .unwrap_or(false)
+                })
+                .filter_map(|dir_entry| {
+                    let episode = Episode::try_from(dir_entry.path()).ok()?;
+                    let path = dir_entry.path().to_str()?.to_owned();
 
-                Some((episode, path))
-            })
-            .for_each(
-                |(ep, path)| match self.episodes.iter_mut().find(|(v, _)| ep.eq(v)) {
-                    Some((_, paths)) => paths.push(path.clone()),
-                    None => self.episodes.push((ep, vec![path])),
-                },
-            );
-        self.episodes.sort_by(|(a, _), (b, _)| a.cmp(b));
-        if !self.has_episode(&self.current_episode) {
-            if let Some((ref episode, _)) = self.episodes.get(0) {
-                self.current_episode = episode.clone();
+                    Some((episode, path))
+                })
+                .for_each(
+                    |(ep, path)| match self.episodes.iter_mut().find(|(v, _)| ep.eq(v)) {
+                        Some((_, paths)) => paths.push(path.clone()),
+                        None => self.episodes.push((ep, vec![path])),
+                    },
+                );
+            self.episodes.sort_by(|(a, _), (b, _)| a.cmp(b));
+            if !self.has_episode(&self.current_episode) {
+                if let Some((ref episode, _)) = self.episodes.get(0) {
+                    self.current_episode = episode.clone();
+                }
             }
         }
     }
@@ -421,7 +427,7 @@ impl Anime {
                 Ok(())
             }
             None => Err(Err::InvalidEpisode(InvalidEpisodeError::NotExist {
-                anime: self.path.to_string(),
+                anime: format!("{:?}", self.paths),
                 episode: watched,
             })),
         }
@@ -537,9 +543,7 @@ impl<'a> Database<'a> {
     }
 
     pub fn anilist_access_token(&self) -> Option<&str> {
-        self.anilist_cred
-            .as_ref()
-            .map(|v| v.access_token())
+        self.anilist_cred.as_ref().map(|v| v.access_token())
     }
 
     pub fn anilist_cred_set(&mut self, cred: Option<AniListCred>) {
@@ -580,6 +584,7 @@ impl<'a> Database<'a> {
 
     pub fn update_directory(&mut self, directory: impl AsRef<str>, time: u64, buf: &mut String) {
         let mut sanitized_name = buf;
+        self.previous_update.push((directory.as_ref().into(), time));
 
         read_dir(directory.as_ref())
             .unwrap()
@@ -608,7 +613,15 @@ impl<'a> Database<'a> {
                         sanitized_name.clear();
                     }
                     Entry::Occupied(mut v) => {
-                        if v.get().last_updated < dir_modified_time(path).unwrap() {
+                        if v.get().last_updated < dir_modified_time(&path).unwrap()
+                            || v.get().episodes().first().is_some_and(|(_, v)| {
+                                !v.iter().any(|v| {
+                                    Path::new(v).canonicalize().is_ok_and(|v| {
+                                        v.parent().unwrap().eq(&path.canonicalize().unwrap())
+                                    })
+                                })
+                            })
+                        {
                             v.get_mut().update_episodes();
                         }
                     }
@@ -647,7 +660,7 @@ impl<'a> Database<'a> {
         self.cached_view.last_updated = get_time();
         self.cached_view.animes = anime_map
             .values_mut()
-            .filter(|v| Path::new(&v.path).exists())
+            .filter(|v| v.paths.iter().any(|v| Path::new(&v).exists()))
             .collect();
         self.cached_view
             .animes

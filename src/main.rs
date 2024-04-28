@@ -487,12 +487,12 @@ fn poll_http(app: &mut App) {
                         eprintln!("{}:{}:Oops", std::file!(), std::line!());
                     }
                 },
-                HttpData::UpdateMedia(path, entry) => {
+                HttpData::UpdateMedia(anime_ptr, entry) => {
                     let anime = app
                         .database
                         .animes()
                         .iter_mut()
-                        .find(|v| v.path() == path)
+                        .find(|v| v.as_ptr_id() == anime_ptr)
                         .unwrap();
                     if entry.updated_at() > anime.last_watched() {
                         anime.set_last_watched(entry.updated_at());
@@ -535,7 +535,7 @@ pub fn send_request<Fut>(
 pub enum HttpData {
     Viewer(Viewer, String),
     MediaList(MediaList),
-    UpdateMedia(String /* path */, MediaEntry),
+    UpdateMedia(u64 /* paths hash */, MediaEntry),
     Debug(String),
 }
 

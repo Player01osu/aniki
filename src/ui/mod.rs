@@ -593,10 +593,10 @@ pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut
                 .header("Accept", "application/json")
                 .body(json.to_string());
             // TODO: Handle error
-            let path = anime.path().to_string();
-            send_request(mutex, request, |res| async move {
+            let ptr_id = anime.as_ptr_id();
+            send_request(mutex, request, move |res| async move {
                 anyhow::Ok(HttpData::UpdateMedia(
-                    path,
+                    ptr_id,
                     MediaEntry::deserialize_json(&res.bytes().await?)?,
                 ))
             });
