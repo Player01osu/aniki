@@ -3,8 +3,7 @@ use sdl2::keyboard::Mod;
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::anilist_serde::{MediaList, Viewer};
-use crate::{rect, send_request, App, HttpData, LoginProgress, HttpMutex};
+use crate::{rect, send_request, App, HttpSender, LoginProgress, RequestKind};
 
 use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::layout::Layout;
@@ -13,43 +12,19 @@ use super::{
     Screen, Style, DEFAULT_BUTTON_FONT, H1_FONT_INFO, H2_FONT_INFO, INPUT_BOX_FONT_INFO,
 };
 
-pub fn get_anilist_media_list(mutex: &HttpMutex, user_id: u64, access_token: &str) {
-    let anime_list_query = include_str!("anime_list.gql");
-    let json = serde_json::json!({"query": anime_list_query, "variables": {"id": 15125, "uid": user_id}});
-    let request = reqwest::Client::new()
-        .post("https://graphql.anilist.co")
-        .header("Authorization", format!("Bearer {access_token}"))
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json")
-        .body(json.to_string());
-    send_request(&mutex, request, |res| async move {
-        Ok(HttpData::MediaList(MediaList::deserialize_json(
-            &res.bytes().await?,
-        )?))
-    });
+pub fn get_anilist_media_list(tx: &HttpSender, user_id: u64, access_token: &str) {
+    let access_token = access_token.to_string();
+    send_request(tx, RequestKind::GetAnilistMediaList { user_id, access_token });
 }
 
-pub fn send_login(mutex: &HttpMutex, access_token: &str) {
-    let mutation = r#"query { Viewer { id } }"#;
-    let json = serde_json::json!({"query": mutation, "variables": {"id": 15125}});
-    let request = reqwest::Client::new()
-        .post("https://graphql.anilist.co")
-        .header("Authorization", format!("Bearer {access_token}"))
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json")
-        .body(json.to_string());
+pub fn send_login(tx: &HttpSender, access_token: &str) {
     let access_token = access_token.to_string();
-    send_request(mutex, request, |res| async move {
-        Ok(HttpData::Viewer(
-            Viewer::deserialize_json(&res.bytes().await?)?,
-            access_token.to_string(),
-        ))
-    });
+    send_request(tx, RequestKind::SendLogin { access_token });
 }
 
 pub fn draw_login(app: &mut App) {
     if let Some(cred) = app.database.anilist_cred() {
-        get_anilist_media_list(&app.mutex, cred.user_id(), cred.access_token());
+        get_anilist_media_list(&app.http_tx, cred.user_id(), cred.access_token());
         app.next_screen = Some(Screen::Main);
         return;
     }
@@ -166,7 +141,7 @@ pub fn draw_login(app: &mut App) {
     if draw_button(app, "Submit", submit_button_style, submit_button_layout) || input_box_submit {
         app.login_progress = LoginProgress::Started;
         let access_token = &app.text_input;
-        send_login(&app.mutex, access_token);
+        send_login(&app.http_tx, access_token);
     }
 
     // draw skip login button

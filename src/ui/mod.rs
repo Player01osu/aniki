@@ -2,15 +2,14 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use crate::anilist_serde::MediaEntry;
 use crate::database;
 use crate::database::episode::Episode;
 use crate::database::Database;
 use crate::send_request;
 use crate::App;
 use crate::ConnectionOverlayState;
-use crate::HttpData;
-use crate::HttpMutex;
+use crate::HttpSender;
+use crate::RequestKind;
 use crate::CONNECTION_OVERLAY_TIMEOUT;
 use anyhow::Context;
 use anyhow::Result;
@@ -581,25 +580,13 @@ fn color_hex_a_test_0() {
     assert_eq!(color_hex_a(0xDEADBEEF), Color::RGBA(0xDE, 0xAD, 0xBE, 0xEF));
 }
 
-pub fn update_anilist_watched(mutex: &HttpMutex, access_token: &str, anime: &mut database::Anime) {
+pub fn update_anilist_watched(tx: &HttpSender, access_token: &str, anime: &mut database::Anime) {
     if let Some(media_id) = anime.anilist_id() {
         if let Episode::Numbered { episode, .. } = anime.current_episode() {
-            let anime_list_query = include_str!("update_anilist_media.gql");
-            let json = serde_json::json!({"query": anime_list_query, "variables": {"id": 15125, "mediaId": media_id, "episode": episode}});
-            let request = reqwest::Client::new()
-                .post("https://graphql.anilist.co")
-                .header("Authorization", format!("Bearer {access_token}"))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .body(json.to_string());
-            // TODO: Handle error
+            let access_token = access_token.to_string();
             let ptr_id = anime.as_ptr_id();
-            send_request(mutex, request, move |res| async move {
-                anyhow::Ok(HttpData::UpdateMedia(
-                    ptr_id,
-                    MediaEntry::deserialize_json(&res.bytes().await?)?,
-                ))
-            });
+            let access_token = access_token.to_string();
+            send_request(tx, RequestKind::UpdateMedia { access_token, media_id, episode, ptr_id });
         }
     }
 }

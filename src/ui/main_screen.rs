@@ -489,7 +489,7 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
         anime.update_watched(current_ep.clone()).unwrap();
 
         if let Some(access_token) = app.database.anilist_access_token() {
-            update_anilist_watched(&app.mutex, access_token, anime);
+            update_anilist_watched(&app.http_tx, access_token, anime);
         }
 
         app.main_state.scroll.scroll = 0;
@@ -508,7 +508,7 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
             app.main_state.scroll.scroll = 0;
 
             if let Some(access_token) = app.database.anilist_access_token() {
-                update_anilist_watched(&app.mutex, access_token, anime);
+                update_anilist_watched(&app.http_tx, access_token, anime);
             }
         }
     }

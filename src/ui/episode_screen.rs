@@ -279,7 +279,7 @@ fn draw_episode(
         open_url(&paths[0]).unwrap();
 
         if let Some(access_token) = app.database.anilist_access_token() {
-            update_anilist_watched(&app.mutex, &access_token, anime);
+            update_anilist_watched(&app.http_tx, &access_token, anime);
         }
     }
     let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)), None, None);

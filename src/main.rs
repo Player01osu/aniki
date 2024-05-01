@@ -1,11 +1,10 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
-use anilist_serde::{MediaEntry, MediaList, Viewer};
 use anyhow::bail;
 use config::Config;
 use database::json_database::AnimeDatabaseData;
-use database::{AniListCred, Database};
-use reqwest::RequestBuilder;
+use database::Database;
+use http::{HttpData, HttpSender};
 use sdl2::clipboard::ClipboardUtil;
 use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
@@ -21,23 +20,25 @@ use sdl2::{
 };
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
-use std::future::Future;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::time::Duration;
 use ui::login_screen::{get_anilist_media_list, send_login};
+use ui::FontManager;
 use ui::Screen;
 use ui::TextManager;
 use ui::TextureManager;
 use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
 use ui::{color_hex, draw, BACKGROUND_COLOR};
-use ui::{update_anilist_watched, FontManager};
+
+use crate::http::{poll_http, send_request, RequestKind};
 
 mod anilist_serde;
 mod config;
 mod database;
+mod http;
 mod ui;
 
 const MOUSE_CLICK_LEFT: u8 = 0x01;
@@ -148,7 +149,8 @@ pub struct App<'a, 'b> {
     pub show_toolbar: bool,
     pub frametime: std::time::Duration,
 
-    pub mutex: HttpMutex,
+    pub http_rx: mpsc::Receiver<anyhow::Result<HttpData>>,
+    pub http_tx: HttpSender,
 
     pub connection_overlay: ConnectionOverlay,
     pub login_progress: LoginProgress,
@@ -164,7 +166,6 @@ pub struct App<'a, 'b> {
     //   mouse_clicked_right
     //   resized
     //state_flag: u8,
-
     mouse_left_up: bool,
     mouse_left_down: bool,
     mouse_right_up: bool,
@@ -200,6 +201,8 @@ impl<'a, 'b> App<'a, 'b> {
         texture_creator: &'a TextureCreator<WindowContext>,
         thumbnail_path: String,
     ) -> Self {
+        let (http_tx, http_rx) = mpsc::channel();
+
         Self {
             canvas,
             clipboard,
@@ -217,7 +220,8 @@ impl<'a, 'b> App<'a, 'b> {
 
             show_toolbar: false,
 
-            mutex: Arc::new(Mutex::new(vec![])),
+            http_tx,
+            http_rx,
 
             login_progress: LoginProgress::None,
             connection_overlay: ConnectionOverlay {
@@ -305,8 +309,11 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     pub fn reset_frame_state(&mut self) {
-        self.mouse_scroll_y_accel = self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel_deccel;
-        self.mouse_scroll_y = self.mouse_scroll_y * self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel;
+        self.mouse_scroll_y_accel =
+            self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel_deccel;
+        self.mouse_scroll_y =
+            self.mouse_scroll_y * self.mouse_scroll_y_accel * self.frametime_frac()
+                / self.weights.deccel;
 
         if self.mouse_left_up {
             self.mouse_left_down = false;
@@ -443,70 +450,10 @@ fn release_lock_file() -> anyhow::Result<()> {
     Ok(())
 }
 
-type HttpMutex = Arc<Mutex<Vec<HttpData>>>;
-
 pub enum LoginProgress {
     None,
     Started,
     Failed,
-}
-
-fn sync_to_anilist(mutex: &HttpMutex, access_token: &str, animes: &mut [&mut database::Anime]) {
-    for anime in animes {
-        update_anilist_watched(mutex, access_token, *anime);
-    }
-}
-
-fn poll_http(app: &mut App) {
-    let mutex = &app.mutex;
-    if let Ok(ref mut lock) = mutex.try_lock() {
-        for data in lock.drain(..) {
-            match data {
-                HttpData::Viewer(viewer, access_token) => match viewer {
-                    Viewer::Ok(id) => {
-                        app.database
-                            .anilist_cred_set(Some(AniListCred::new(id, access_token)));
-                        app.login_progress = LoginProgress::None;
-                        app.connection_overlay.state = ConnectionOverlayState::Connected;
-                        app.connection_overlay.timeout = CONNECTION_OVERLAY_TIMEOUT;
-                    }
-                    Viewer::Err(_) => {
-                        app.login_progress = LoginProgress::Failed;
-                        app.text_input.clear();
-                    }
-                },
-                HttpData::MediaList(media_list) => match media_list {
-                    MediaList::Ok(collections) => {
-                        for collection in collections.iter() {
-                            let mut sync_newer = app.database.update_anilist_list(collection);
-
-                            if let Some(access_token) = app.database.anilist_access_token() {
-                                sync_to_anilist(mutex, access_token, &mut sync_newer);
-                            }
-                        }
-                        app.database.update_cached();
-                    }
-                    MediaList::Err(_) => {
-                        eprintln!("{}:{}:Oops", std::file!(), std::line!());
-                    }
-                },
-                HttpData::UpdateMedia(anime_ptr, entry) => {
-                    let anime = app
-                        .database
-                        .animes()
-                        .iter_mut()
-                        .find(|v| v.as_ptr_id() == anime_ptr)
-                        .unwrap();
-                    if entry.updated_at() > anime.last_watched() {
-                        anime.set_last_watched(entry.updated_at());
-                    }
-                }
-                HttpData::Debug(v) => {
-                    dbg!(v);
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -515,31 +462,6 @@ struct ScrollWeights {
     accel_accel: f32,
     deccel_deccel: f32,
     deccel: f32,
-}
-
-pub fn send_request<Fut>(
-    mutex: &HttpMutex,
-    request: RequestBuilder,
-    f: impl FnOnce(reqwest::Response) -> Fut + Send + 'static,
-) where
-    Fut: Future<Output = anyhow::Result<HttpData>> + Send,
-{
-    let mutex = Arc::clone(mutex);
-    tokio::spawn(async move {
-        let res = request.send().await?;
-        let v = f(res).await?;
-        let mut guard = mutex.lock().unwrap();
-        guard.push(v);
-        anyhow::Ok(())
-    });
-}
-
-#[derive(Clone, Debug)]
-pub enum HttpData {
-    Viewer(Viewer, String),
-    MediaList(MediaList),
-    UpdateMedia(u64 /* paths hash */, MediaEntry),
-    Debug(String),
 }
 
 fn scroll_func(x: f32) -> f32 {
@@ -565,7 +487,7 @@ async fn main() -> anyhow::Result<()> {
                 show_fps = true;
             }
             _ => {
-                bail!("{program_name}:unknown argument:{arg}");
+                bail!("{program_name}:unknown argument:\"{arg}\"");
             }
         }
     }
@@ -626,8 +548,8 @@ async fn main() -> anyhow::Result<()> {
     );
 
     if let Some(cred) = app.database.anilist_cred() {
-        send_login(&app.mutex, cred.access_token());
-        get_anilist_media_list(&app.mutex, cred.user_id(), cred.access_token());
+        send_login(&app.http_tx, cred.access_token());
+        get_anilist_media_list(&app.http_tx, cred.user_id(), cred.access_token());
     }
 
     enum CanvasTexture<'a> {
@@ -685,7 +607,9 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     if app.mouse_scroll_y.abs() <= 80.0 {
                         app.mouse_scroll_y_accel += app.weights.accel_accel * app.frametime_frac();
-                        app.mouse_scroll_y += precise_y.signum() * scroll_func((precise_y * app.weights.accel).abs()) * app.frametime_frac();
+                        app.mouse_scroll_y += precise_y.signum()
+                            * scroll_func((precise_y * app.weights.accel).abs())
+                            * app.frametime_frac();
                     }
                     app.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
                 }
@@ -732,7 +656,10 @@ async fn main() -> anyhow::Result<()> {
                     let (width, height) = app.canvas.window().size();
                     let pixel_format = app.canvas.default_pixel_format();
                     let pitch = pixel_format.byte_size_per_pixel() * width as usize;
-                    let pixels = app.canvas.read_pixels(app.window_rect(), pixel_format).unwrap();
+                    let pixels = app
+                        .canvas
+                        .read_pixels(app.window_rect(), pixel_format)
+                        .unwrap();
                     let mut texture = texture_creator
                         .create_texture_static(pixel_format, width, height)
                         .unwrap();
@@ -812,9 +739,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Do not write to cache while developing
     #[cfg(debug_assertions)]
-    {
+    if true {
         return Ok(());
     }
+
     app.database.write(cfg.database_path())?;
 
     Ok(())
