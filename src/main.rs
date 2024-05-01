@@ -635,8 +635,8 @@ async fn main() -> anyhow::Result<()> {
         Wait(u32),
     }
 
-    let idle_time = 100;
-    let mut canvas_texture = CanvasTexture::Wait(idle_time);
+    const IDLE_TIME: u32 = 100;
+    let mut canvas_texture = CanvasTexture::Wait(IDLE_TIME);
 
     app.canvas.clear();
     app.canvas.present();
@@ -648,7 +648,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         for event in event_pump.poll_iter() {
-            canvas_texture = CanvasTexture::Wait(idle_time);
+            canvas_texture = CanvasTexture::Wait(IDLE_TIME);
             app.mouse_moved = event.is_mouse();
 
             match event {
