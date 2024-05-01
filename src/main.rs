@@ -298,7 +298,10 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     pub fn frametime_frac(&self) -> f32 {
-        (self.frametime.as_micros() / 16) as f32 / 1200.0
+        // TODO: Timing still needs to be fixed.
+        //
+        // Specifically, as it relates to scrolling, the timing should be scaled so
+        ((self.frametime.as_micros() as f64 / 16.0) / 1200.0) as f32
     }
 
     pub fn reset_frame_state(&mut self) {
