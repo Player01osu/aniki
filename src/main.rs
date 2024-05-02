@@ -361,6 +361,10 @@ impl<'a, 'b> App<'a, 'b> {
         self.id_map[id].1 = true;
     }
 
+    /// Registers area to be scrollable and draws scrollbar
+    ///
+    /// NOTE: This function cannot stack areas, and doing so may cause
+    /// both areas to scroll at the same time
     fn register_scroll(&mut self, scroll: &mut Scroll, region: &mut Rect) {
         scroll.id = self.create_id(*region);
 
