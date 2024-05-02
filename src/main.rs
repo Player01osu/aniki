@@ -313,8 +313,7 @@ impl<'a, 'b> App<'a, 'b> {
         self.mouse_scroll_y_accel =
             self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel_deccel;
         self.mouse_scroll_y =
-            self.mouse_scroll_y * self.mouse_scroll_y_accel * self.frametime_frac()
-                / self.weights.deccel;
+            self.mouse_scroll_y * self.mouse_scroll_y_accel * 0.1 / self.weights.deccel;
 
         if self.mouse_left_up {
             self.mouse_left_down = false;
@@ -607,10 +606,9 @@ async fn main() -> anyhow::Result<()> {
                     ..
                 } => {
                     if app.mouse_scroll_y.abs() <= 80.0 {
-                        app.mouse_scroll_y_accel += app.weights.accel_accel * app.frametime_frac();
-                        app.mouse_scroll_y += precise_y.signum()
-                            * scroll_func((precise_y * app.weights.accel).abs())
-                            * app.frametime_frac();
+                        app.mouse_scroll_y_accel += app.weights.accel_accel * 0.32;
+                        app.mouse_scroll_y +=
+                            precise_y.signum() * scroll_func((precise_y * app.weights.accel).abs())
                     }
                     app.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
                 }
