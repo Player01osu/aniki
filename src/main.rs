@@ -265,8 +265,8 @@ impl<'a, 'b> App<'a, 'b> {
             weights: ScrollWeights {
                 accel: 10.990031,
                 accel_accel: 1.9800003,
-                deccel_deccel: 3.119999,
-                deccel: 1.3700006,
+                decel_decel: 3.119999,
+                decel: 1.3700006,
             },
 
             resized: false,
@@ -311,9 +311,9 @@ impl<'a, 'b> App<'a, 'b> {
 
     pub fn reset_frame_state(&mut self) {
         self.mouse_scroll_y_accel =
-            self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.deccel_deccel;
+            self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.decel_decel;
         self.mouse_scroll_y =
-            self.mouse_scroll_y * self.mouse_scroll_y_accel * 0.1 / self.weights.deccel;
+            self.mouse_scroll_y * self.mouse_scroll_y_accel * 0.1 / self.weights.decel;
 
         if self.mouse_left_up {
             self.mouse_left_down = false;
@@ -460,8 +460,8 @@ pub enum LoginProgress {
 struct ScrollWeights {
     accel: f32,
     accel_accel: f32,
-    deccel_deccel: f32,
-    deccel: f32,
+    decel_decel: f32,
+    decel: f32,
 }
 
 fn scroll_func(x: f32) -> f32 {
@@ -712,7 +712,7 @@ async fn main() -> anyhow::Result<()> {
                 if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
                     scroll_change *= 10.0;
                 }
-                app.weights.deccel += scroll_change;
+                app.weights.decel += scroll_change;
                 dbg!(&app.weights);
             }
             if app.keydown(Keycode::F) {
@@ -722,7 +722,7 @@ async fn main() -> anyhow::Result<()> {
                 if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
                     scroll_change *= 10.0;
                 }
-                app.weights.deccel_deccel += scroll_change;
+                app.weights.decel_decel += scroll_change;
                 dbg!(&app.weights);
             }
         }
