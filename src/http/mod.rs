@@ -31,7 +31,7 @@ pub enum RequestKind {
 pub enum HttpData {
     Viewer(Viewer, String),
     MediaList(MediaList),
-    UpdateMedia(u64 /* paths hash */, MediaEntry),
+    UpdateMedia(u64 /* ptr_id */, MediaEntry),
     Debug(String),
 }
 
