@@ -7,9 +7,9 @@ use sdl2::{
 };
 
 use crate::database::json_database::AnimeDatabaseData;
-use crate::Format;
+use crate::{get_scroll, Format};
 use crate::{
-    database, rect,
+    database,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
@@ -18,7 +18,7 @@ use super::layout::Layout as _;
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
     draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions,
-    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, SCROLLBAR_COLOR,
+    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO,
     TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR,
 };
 
@@ -35,82 +35,22 @@ type Layout = Rect;
 // TODO: Clean up event handling.
 fn handle_main_events(
     app: &mut App,
-    layout: Layout,
-    card_layouts: &[Layout],
-    cards_per_row: usize,
 ) {
-    // Mouse scrolling
-    if let Some(last) = card_layouts.last() {
-        let max_height = layout.height() as i32;
-        let card_height = last.y + last.height() as i32;
-        if app.mouse_scroll_y < 0.0 && card_height > max_height {
-            let overflow = (max_height - card_height - app.mouse_scroll_y as i32).max(0);
-            app.main_state.scroll.scroll =
-                app.main_state.scroll.scroll + app.mouse_scroll_y as i32 + overflow;
-        }
-    }
-
-    if let Some(first) = card_layouts.first() {
-        let min_height = CARD_Y_PAD_OUTER;
-        if app.mouse_scroll_y > 0.0 && first.y < min_height {
-            app.main_state.scroll.scroll = (app.main_state.scroll.scroll + app.mouse_scroll_y as i32).min(min_height);
-        }
-    }
-
-    if app.main_state.search_anime.is_none() {
-        if app.keydown(Keycode::J) {
-            if let Some(last) = card_layouts.last() {
-                let max_height = layout.height() as i32;
-                let card_height = last.y + last.height() as i32;
-                if card_height > max_height {
-                    let overflow = (max_height - card_height + 40).max(0);
-                    app.main_state.scroll.scroll = app.main_state.scroll.scroll - 40 + overflow;
-                }
-            }
-        } else if app.keydown(Keycode::K) {
-            if let Some(first) = card_layouts.first() {
-                if first.y < CARD_Y_PAD_OUTER {
-                    app.main_state.scroll.scroll += 40;
-                }
-            }
-        } else if app.keydown(Keycode::Escape) {
-            app.running = false;
-        } else if app.keydown(Keycode::F) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            // TODO: Select forward
-            //app.main_keyboard_override = true;
-            //match &mut app.main_selected {
-            //    Some(v) => *v = (*v + 1) % card_layouts.len(),
-            //    None => app.main_selected = Some(0),
-            //}
-        } else if app.keydown(Keycode::B) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            // TODO: Select backwards
-            //app.main_keyboard_override = true;
-            //match &mut app.main_selected {
-            //    Some(v) => *v = (*v - 1) % card_layouts.len(),
-            //    None => app.main_selected = Some(0),
-            //}
-        } else if app.keydown(Keycode::N) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            // TODO: Select down
-            //app.main_keyboard_override = true;
-            //match &mut app.main_selected {
-            //    Some(v) if *v + cards_per_row > card_layouts.len() => *v = 0,
-            //    Some(v) => *v = (*v + cards_per_row) % card_layouts.len(),
-            //    None => app.main_selected = Some(0),
-            //}
-        } else if app.keydown(Keycode::P) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
-            // TODO: Select up
-            //app.main_keyboard_override = true;
-            //match &mut app.main_selected {
-            //    Some(v) if *v < cards_per_row => *v = card_layouts.len(),
-            //    Some(v) => *v = (*v - cards_per_row) % card_layouts.len(),
-            //    None => app.main_selected = Some(0),
-            //}
-        } else if app.keydown(Keycode::Return) {
-            if let Some(idx) = app.main_state.selected {
-                // Should exist
-                let anime = unsafe { app.database.animes().get_unchecked(idx) };
-                app.next_screen = Some(Screen::SelectEpisode(*anime));
-            }
+    if app.keydown(Keycode::Escape) {
+        app.running = false;
+    } else if app.keydown(Keycode::F) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+        // TODO: Select forward
+    } else if app.keydown(Keycode::B) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+        // TODO: Select backwards
+    } else if app.keydown(Keycode::N) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+        // TODO: Select down
+    } else if app.keydown(Keycode::P) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+        // TODO: Select up
+    } else if app.keydown(Keycode::Return) {
+        if let Some(idx) = app.main_state.selected {
+            // Should exist
+            let anime = unsafe { app.database.animes().get_unchecked(idx) };
+            app.next_screen = Some(Screen::SelectEpisode(*anime));
         }
     }
 }
@@ -180,7 +120,6 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
 
 fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     let outer_bounds_id = app.create_id(app.window_rect());
-    //let outer_bounds_id = app.create_id(Rect::new(0, 0, 0, 0));
     let anime = &mut app.database.animes()[alias_id as usize];
     let (_, text_height) = app
         .text_manager
@@ -284,9 +223,11 @@ fn draw_option(app: &mut App, option_id: usize, option: &str) -> bool {
 
 pub fn draw_main(app: &mut App, layout: Layout) {
     let (window_width, window_height) = app.canvas.window().size();
-    let (card_layouts, scrollbar_layout) = layout.split_vert(796, 800);
+    let mut card_layouts = layout;
+    let scroll = get_scroll(&mut app.main_state.scroll);
+    app.register_scroll(scroll, &mut card_layouts);
 
-    let (cards_per_row, card_layouts) = card_layouts
+    let (_cards_per_row, card_layouts) = card_layouts
         .pad_top(CARD_Y_PAD_OUTER)
         .pad_bottom(CARD_Y_PAD_OUTER)
         .scroll_y(app.main_state.scroll.scroll)
@@ -294,16 +235,14 @@ pub fn draw_main(app: &mut App, layout: Layout) {
     let card_layouts = card_layouts.take(app.database.len()).collect::<Vec<_>>();
 
     if app.main_state.search_anime.is_none() && app.main_state.alias_anime.is_none() {
-        handle_main_events(app, layout, &card_layouts, cards_per_row);
+        handle_main_events(app);
     } else {
         handle_main_search_events(app);
     }
-    if app.resized {
-        if let Some(last) = card_layouts.last() {
-            if (last.y + last.height() as i32) < window_height as i32 {
-                app.main_state.scroll.scroll -= last.y + last.height() as i32 - window_height as i32;
-            }
-        }
+
+    if let Some(last) = card_layouts.last() {
+        let scroll = &mut app.main_state.scroll;
+        scroll.max_scroll = last.y + last.height() as i32 - scroll.scroll;
     }
 
     let anime_list = app.database.animes();
@@ -316,26 +255,6 @@ pub fn draw_main(app: &mut App, layout: Layout) {
             if draw_card(app, anime, idx, *grid_space) {
                 any = true;
             }
-        }
-    }
-
-    // Draw scrollbar
-    if let Some(last) = card_layouts.last() {
-        let scale = scrollbar_layout.height() as f32
-            / (last.y + last.height() as i32 - app.main_state.scroll.scroll) as f32;
-        if scale < 1.0 {
-            let height = (scrollbar_layout.height() as f32 * scale) as u32;
-            app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
-            app.canvas
-                .fill_rect(rect!(
-                    scrollbar_layout.x,
-                    scrollbar_layout.y + (-1.0 * app.main_state.scroll.scroll as f32 * scale) as i32,
-                    scrollbar_layout.width(),
-                    height
-                ))
-                .unwrap();
-        } else {
-            app.main_state.scroll.scroll = 0;
         }
     }
 

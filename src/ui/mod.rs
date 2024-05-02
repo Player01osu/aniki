@@ -16,7 +16,6 @@ use anyhow::Context;
 use anyhow::Result;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadSurface;
-use sdl2::keyboard;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Mod;
 use sdl2::pixels::Color;
@@ -67,7 +66,7 @@ const PLAY_ICON_IMAGE: &[u8] = include_bytes!(r"../../assets/play-icon.svg");
 pub const MISSING_THUMBNAIL: &str = "1";
 const MISSING_THUMBNAIL_IMAGE: &[u8] = include_bytes!(r"../../assets/missing-thumbnail.png");
 
-const SCROLLBAR_COLOR: u32 = 0x2A2A2A;
+pub const SCROLLBAR_COLOR: u32 = 0x2A2A2A;
 
 const LIBERATION_FONT: &str = "0";
 const NOTO_FONT: &str = "1";
@@ -999,7 +998,7 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
     app.canvas.fill_rect(layout).unwrap();
 
     // Draw login button
-    let layout = {
+    let _layout = {
         let text = match app.connection_overlay.state {
             ConnectionOverlayState::Disconnected => "Login",
             ConnectionOverlayState::Connected => "Logout",
@@ -1041,12 +1040,12 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     };
 
     match screen {
-        Screen::Login => draw_login(app),
+        Screen::Login => draw_login(app, layout),
         Screen::Main => draw_main(app, layout),
         Screen::SelectEpisode(anime) => {
             // Anime reference will never get changed while drawing frame
             let anime = unsafe { &**anime };
-            draw_anime_expand(app, anime);
+            draw_anime_expand(app, layout, anime);
         }
     }
 

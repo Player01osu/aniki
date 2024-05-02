@@ -34,7 +34,9 @@ use ui::{color_hex, draw, BACKGROUND_COLOR};
 use lexopt::prelude::*;
 
 use crate::http::{poll_http, send_request, RequestKind};
+use crate::ui::layout::Layout;
 use crate::ui::login_screen::{get_anilist_media_list, send_login};
+use crate::ui::SCROLLBAR_COLOR;
 
 mod anilist_serde;
 mod config;
@@ -125,7 +127,7 @@ pub struct MainState {
 
 impl Scroll {
     pub fn new() -> Self {
-        Self { id: 0, scroll: 0 }
+        Self { id: 0, scroll: 0, max_scroll: 0 }
     }
 }
 
@@ -133,6 +135,7 @@ impl Scroll {
 pub struct Scroll {
     pub id: usize,
     pub scroll: i32,
+    pub max_scroll: i32,
 }
 
 pub struct App<'a, 'b> {
@@ -191,6 +194,10 @@ pub struct App<'a, 'b> {
     pub keyset: HashSet<Keycode>,
     pub keyset_up: HashSet<Keycode>,
     pub keymod: keyboard::Mod,
+}
+
+pub fn get_scroll<'a, 'b>(scroll: &'a mut Scroll) -> &'b mut Scroll {
+    unsafe { &mut *((scroll) as *mut _) }
 }
 
 impl<'a, 'b> App<'a, 'b> {
@@ -348,6 +355,52 @@ impl<'a, 'b> App<'a, 'b> {
             self.screen = next_screen;
             self.id_map.resize(0, (Rect::new(0, 0, 0, 0), false));
         }
+    }
+
+    fn select_id(&mut self, id: usize) {
+        self.id_map[id].1 = true;
+    }
+
+    fn register_scroll(&mut self, scroll: &mut Scroll, region: &mut Rect) {
+        scroll.id = self.create_id(*region);
+
+        if self.mouse_region(*region) {
+            self.select_id(scroll.id);
+        }
+
+        if scroll.max_scroll as u32 >= region.height() {
+            const PAD_TOP: u32 = 16;
+            let (new_region, scroll_layout) = region.split_vert(796, 800);
+            let bar_height =
+                scroll_layout.height() * scroll_layout.height() / scroll.max_scroll as u32;
+            let bar_scroll = scroll.scroll * scroll_layout.height() as i32 / scroll.max_scroll;
+            let bar_rect = rect!(
+                scroll_layout.x(),
+                scroll_layout.y() - bar_scroll + PAD_TOP as i32 / 2,
+                scroll_layout.width(),
+                bar_height - PAD_TOP
+            );
+            self.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
+            self.canvas.fill_rect(bar_rect).unwrap();
+            *region = new_region;
+        }
+
+        if self.state_id(scroll.id) {
+            if self.keyset.contains(&Keycode::J)
+            && scroll.scroll - region.height() as i32 >= -scroll.max_scroll
+            {
+                scroll.scroll -= 6;
+            }
+
+            if self.keyset.contains(&Keycode::K) && scroll.scroll <= 0 {
+                scroll.scroll += 6;
+            }
+
+            scroll.scroll += self.mouse_scroll_y as i32;
+        }
+
+        scroll.scroll = scroll.scroll.max(-scroll.max_scroll + region.height() as i32);
+        scroll.scroll = scroll.scroll.min(0);
     }
 
     fn mouse_update_id(&mut self) {

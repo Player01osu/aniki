@@ -22,7 +22,7 @@ pub fn send_login(tx: &HttpSender, access_token: &str) {
     send_request(tx, RequestKind::SendLogin { access_token });
 }
 
-pub fn draw_login(app: &mut App) {
+pub fn draw_login(app: &mut App, layout: Rect) {
     if let Some(cred) = app.database.anilist_cred() {
         get_anilist_media_list(&app.http_tx, cred.user_id(), cred.access_token());
         app.next_screen = Some(Screen::Main);
@@ -36,7 +36,6 @@ pub fn draw_login(app: &mut App) {
         app.next_screen = Some(Screen::Main);
     }
 
-    let layout = app.window_rect();
     let (header_layout, rest) = layout.split_hori(1, 4);
     let (header_layout, link_layout) = header_layout.split_hori(1, 2);
 

@@ -1,11 +1,10 @@
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::{database, Format, StringManager};
+use crate::{database, get_scroll, Format, StringManager};
 use crate::database::episode::Episode;
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
-    rect,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
@@ -13,12 +12,12 @@ use crate::{
 use super::layout::Layout;
 use super::{
     draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered,
-    update_anilist_watched, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, SCROLLBAR_COLOR,
+    update_anilist_watched, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON,
     THUMBNAIL_MISSING_SIZE, TITLE_FONT, TITLE_FONT_COLOR,
 };
 
-pub const DESCRIPTION_X_PAD_OUTER: i32 = 10;
-pub const DESCRIPTION_Y_PAD_OUTER: i32 = 10;
+pub const DESCRIPTION_X_PAD_OUTER: u32 = 10;
+pub const DESCRIPTION_Y_PAD_OUTER: u32 = 10;
 pub const DESCRIPTION_FONT: &str = TITLE_FONT;
 pub const DESCRIPTION_FONT_PT: u16 = 16;
 pub const DESCRIPTION_FONT_INFO: (&str, u16) = (DESCRIPTION_FONT, DESCRIPTION_FONT_PT);
@@ -29,48 +28,24 @@ pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 
 const THUMBNAIL_RAD: i16 = 6;
 
-fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Rect) {
+fn draw_episode_list(app: &mut App, anime: &database::Anime, mut layout: Rect) {
     app.canvas.set_clip_rect(layout);
     let string_manager = unsafe { &mut *(&mut app.string_manager as *mut StringManager) };
     let episode_height = 70;
     let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
-    let (layout, scrollbar_layout) = layout.split_vert(796, 800);
+    let scroll = get_scroll(&mut app.episode_state.episode_scroll);
+    app.register_scroll(scroll, &mut layout);
     let layouts = layout
         .scroll_y(app.episode_state.episode_scroll.scroll)
         .split_even_hori(episode_height)
         .take(episode_count)
         .collect::<Box<[Rect]>>();
-
-    // Mouse scrolling
     if let Some(last) = layouts.last() {
-        let max_height = layout.height() as i32 + layout.y;
-        let height = last.y + last.height() as i32;
-        if app.mouse_scroll_y < 0.0 && height > max_height {
-            let overflow = (max_height - height - app.mouse_scroll_y as i32).max(0);
-            app.episode_state.episode_scroll.scroll = app.episode_state.episode_scroll.scroll + app.mouse_scroll_y as i32 + overflow;
-        }
+        let max_height = last.height() as i32 + last.y - scroll.scroll - layout.y() as i32;
+        app.episode_state.episode_scroll.max_scroll = max_height;
     }
 
-    if let Some(first) = layouts.first() {
-        let min_height = layout.y;
-        if app.mouse_scroll_y > 0.0 && first.y < min_height {
-            app.episode_state.episode_scroll.scroll = (app.episode_state.episode_scroll.scroll + app.mouse_scroll_y as i32).min(0);
-        }
-    }
-
-    if app.keydown(Keycode::J) {
-        if let Some(last) = layouts.last() {
-            if last.y + last.height() as i32 > layout.y + layout.height() as i32 {
-                app.episode_state.episode_scroll.scroll -= 40;
-            }
-        }
-    } else if app.keydown(Keycode::K) {
-        if let Some(first) = layouts.into_iter().next() {
-            if first.y < layout.y {
-                app.episode_state.episode_scroll.scroll += 40;
-            }
-        }
-    } else if app.keydown(Keycode::Escape) {
+    if app.keydown(Keycode::Escape) {
         app.next_screen = Some(Screen::Main);
     }
 
@@ -114,35 +89,10 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, layout: Rect) {
         );
     }
     app.canvas.set_clip_rect(None);
-
-    // Draw scrollbar
-    let scale = scrollbar_layout.height() as f32 / (episode_height as f32 * episode_count as f32);
-    if scale < 1.0 {
-        let height = (scrollbar_layout.height() as f32 * scale) as u32;
-        app.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
-        app.canvas
-            .fill_rect(rect!(
-                scrollbar_layout.x,
-                scrollbar_layout.y + (-1.0 * app.episode_state.episode_scroll.scroll as f32 * scale) as i32,
-                scrollbar_layout.width(),
-                height
-            ))
-            .unwrap();
-    } else {
-        app.episode_state.episode_scroll.scroll = 0;
-    }
 }
 
-pub fn draw_anime_expand(app: &mut App, anime: &database::Anime) {
-    let (window_width, window_height) = app.canvas.window().size();
-    // TODO: Think about abstracting scrolling type windows out
-    // into a function or data structure
-    let layout = Rect::new(
-        DESCRIPTION_X_PAD_OUTER,
-        DESCRIPTION_Y_PAD_OUTER,
-        window_width - DESCRIPTION_X_PAD_OUTER as u32,
-        window_height - DESCRIPTION_Y_PAD_OUTER as u32,
-    );
+pub fn draw_anime_expand(app: &mut App, layout: Rect, anime: &database::Anime) {
+    let layout = layout.pad_outer(DESCRIPTION_X_PAD_OUTER, DESCRIPTION_Y_PAD_OUTER);
     let (left_layout, right_layout) = layout.split_vert(1, 10);
     let (top_left_layout, _bottom_left_layout) = left_layout.split_hori(1, 11);
     let (top_description_layout, bottom_description_layout) = right_layout.split_hori(3, 7);
@@ -253,7 +203,7 @@ fn draw_episode(
     text: &str,
     episode: Episode,
     layout: Rect,
-    clip_rect: Rect,
+    _clip_rect: Rect,
 ) {
     let (play_width, play_height) = app
         .image_manager
