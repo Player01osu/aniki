@@ -1,6 +1,5 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
-use anyhow::bail;
 use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
@@ -33,6 +32,7 @@ use ui::TextureManager;
 use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
 use ui::{color_hex, draw, BACKGROUND_COLOR};
+use lexopt::prelude::*;
 
 use crate::http::{poll_http, send_request, RequestKind};
 
@@ -472,22 +472,26 @@ fn scroll_func(x: f32) -> f32 {
 async fn main() -> anyhow::Result<()> {
     lock_file()?;
     let cfg = Config::parse_cfg();
-    let mut args = std::env::args();
-    let program_name = args.next().unwrap_or(String::from("aniki"));
 
     let mut avg_time = [0.0; 60];
     let mut frame_num = 0;
     let mut show_fps_time = std::time::Instant::now();
     let mut prev_time = std::time::Instant::now();
-    let mut show_fps = false;
 
-    for arg in args {
-        match arg.as_str() {
-            "-f" | "--show-fps" => {
+    let mut show_fps = false;
+    let mut force_vsync = false;
+    let mut args_parser = lexopt::Parser::from_env();
+
+    while let Some(arg) = args_parser.next()? {
+        match arg {
+            Short('f') | Long("show-fps") => {
                 show_fps = true;
             }
+            Short('F') | Long("force-vsync") => {
+                force_vsync = true;
+            }
             _ => {
-                bail!("{program_name}:unknown argument:\"{arg}\"");
+                anyhow::Result::Err(arg.unexpected())?;
             }
         }
     }
@@ -516,10 +520,10 @@ async fn main() -> anyhow::Result<()> {
     let input_util = video_subsystem.text_input();
     input_util.stop();
 
-    let mut canvas = if true || show_fps {
-        window.into_canvas().accelerated().build()?
-    } else {
+    let mut canvas = if force_vsync {
         window.into_canvas().present_vsync().accelerated().build()?
+    } else {
+        window.into_canvas().accelerated().build()?
     };
     canvas.window_mut().set_minimum_size(700, 500)?;
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
