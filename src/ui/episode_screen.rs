@@ -41,7 +41,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, mut layout: Rect) {
         .take(episode_count)
         .collect::<Box<[Rect]>>();
     if let Some(last) = layouts.last() {
-        let max_height = last.height() as i32 + last.y - scroll.scroll - layout.y() as i32;
+        let max_height = last.bottom() - scroll.scroll - layout.y();
         app.episode_state.episode_scroll.max_scroll = max_height;
     }
 

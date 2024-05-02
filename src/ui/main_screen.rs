@@ -242,7 +242,7 @@ pub fn draw_main(app: &mut App, layout: Layout) {
 
     if let Some(last) = card_layouts.last() {
         let scroll = &mut app.main_state.scroll;
-        scroll.max_scroll = last.y + last.height() as i32 - scroll.scroll;
+        scroll.max_scroll = last.bottom() - scroll.scroll;
     }
 
     let anime_list = app.database.animes();
