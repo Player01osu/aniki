@@ -451,12 +451,12 @@ fn download_image(url: &str, path: &str) -> anyhow::Result<()> {
     tokio::task::spawn(async {
         let data = reqwest::get(url)
             .await
-            .with_context(|| "Failed to connect to url")?
+            .context("Failed to connect to url")?
             .bytes()
             .await?;
         tokio::fs::write(path, data)
             .await
-            .with_context(|| "Failed to write to file")?;
+            .context("Failed to write to file")?;
         Ok::<(), anyhow::Error>(())
     });
     Ok(())
