@@ -587,7 +587,15 @@ pub fn update_anilist_watched(tx: &HttpSender, access_token: &str, anime: &mut d
             let access_token = access_token.to_string();
             let ptr_id = anime.as_ptr_id();
             let access_token = access_token.to_string();
-            send_request(tx, RequestKind::UpdateMedia { access_token, media_id, episode, ptr_id });
+            send_request(
+                tx,
+                RequestKind::UpdateMedia {
+                    access_token,
+                    media_id,
+                    episode,
+                    ptr_id,
+                },
+            );
         }
     }
 }
@@ -678,12 +686,13 @@ fn draw_image_clip(
         ..
     } = texture.query();
 
-    let scaling =
-        if image_width as i32 - layout.width() as i32 > image_height as i32 - layout.height() as i32 {
-            image_width as f32 / layout.width() as f32
-        } else {
-            image_height as f32 / layout.height() as f32
-        };
+    let scaling = if image_width as i32 - layout.width() as i32
+        > image_height as i32 - layout.height() as i32
+    {
+        image_width as f32 / layout.width() as f32
+    } else {
+        image_height as f32 / layout.height() as f32
+    };
     image_width = (image_width as f32 / scaling) as u32;
     image_height = (image_height as f32 / scaling) as u32;
 
@@ -717,12 +726,13 @@ fn draw_image_float(
         height: mut image_height,
         ..
     } = texture.query();
-    let scaling =
-        if image_width as i32 - layout.width() as i32 > image_height as i32 - layout.height() as i32 {
-            image_width as f32 / layout.width() as f32
-        } else {
-            image_height as f32 / layout.height() as f32
-        };
+    let scaling = if image_width as i32 - layout.width() as i32
+        > image_height as i32 - layout.height() as i32
+    {
+        image_width as f32 / layout.width() as f32
+    } else {
+        image_height as f32 / layout.height() as f32
+    };
     image_width = (image_width as f32 / scaling) as u32;
     image_height = (image_height as f32 / scaling) as u32;
 
@@ -852,12 +862,11 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
         text.to_owned()
     };
 
-    let (button_fg_color, button_bg_color) =
-        if app.state_id(button_id) {
-            (style.fg_hover_color, style.bg_hover_color)
-        } else {
-            (style.fg_color, style.bg_color)
-        };
+    let (button_fg_color, button_bg_color) = if app.state_id(button_id) {
+        (style.fg_hover_color, style.bg_hover_color)
+    } else {
+        (style.fg_color, style.bg_color)
+    };
     app.canvas.set_draw_color(button_bg_color);
     match style.round {
         Some(round) => {
