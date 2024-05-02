@@ -516,7 +516,7 @@ async fn main() -> anyhow::Result<()> {
     let input_util = video_subsystem.text_input();
     input_util.stop();
 
-    let mut canvas = if show_fps {
+    let mut canvas = if true || show_fps {
         window.into_canvas().accelerated().build()?
     } else {
         window.into_canvas().present_vsync().accelerated().build()?
@@ -557,7 +557,7 @@ async fn main() -> anyhow::Result<()> {
         Wait(f32),
     }
 
-    const IDLE_TIME: f32 = 20.0;
+    const IDLE_TIME: f32 = 10.0;
     let mut canvas_texture = CanvasTexture::Wait(IDLE_TIME);
 
     app.canvas.clear();
@@ -729,6 +729,10 @@ async fn main() -> anyhow::Result<()> {
 
         app.frametime = prev_time.elapsed();
         prev_time = std::time::Instant::now();
+
+        if matches!(canvas_texture, CanvasTexture::Cached(_)) {
+            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        }
         if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
         }
