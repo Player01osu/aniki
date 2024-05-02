@@ -1,5 +1,6 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::ops::Sub;
 use std::rc::Rc;
 
 use crate::database;
@@ -44,9 +45,9 @@ use sdl2::rect::Rect;
 use sdl2::rwops::RWops;
 
 pub mod episode_screen;
+pub mod layout;
 pub mod login_screen;
 pub mod main_screen;
-pub mod layout;
 
 const DEBUG_COLOR: u32 = 0xFF0000;
 
@@ -1041,8 +1042,12 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
         }
     }
 
-    app.connection_overlay.timeout = app.connection_overlay.timeout.saturating_sub(1);
-    if app.connection_overlay.timeout > 0 {
+    app.connection_overlay.timeout = app
+        .connection_overlay
+        .timeout
+        .sub(app.frametime_frac())
+        .max(0.0);
+    if app.connection_overlay.timeout > 0.0 {
         match app.connection_overlay.state {
             ConnectionOverlayState::Connected => {
                 draw_connection_overlay_connected(app);

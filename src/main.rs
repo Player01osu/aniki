@@ -20,6 +20,7 @@ use sdl2::{
 };
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
+use std::ops::Sub;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -45,7 +46,7 @@ const MOUSE_CLICK_LEFT: u8 = 0x01;
 const MOUSE_CLICK_RIGHT: u8 = 0x02;
 const MOUSE_MOVED: u8 = 0x04;
 const RESIZED: u8 = 0x08;
-pub const CONNECTION_OVERLAY_TIMEOUT: u16 = 210;
+pub const CONNECTION_OVERLAY_TIMEOUT: f32 = 170.0;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Format {
@@ -84,7 +85,7 @@ impl StringManager {
 
 #[derive(Debug)]
 pub struct ConnectionOverlay {
-    timeout: u16,
+    timeout: f32,
     state: ConnectionOverlayState,
 }
 
@@ -554,10 +555,10 @@ async fn main() -> anyhow::Result<()> {
 
     enum CanvasTexture<'a> {
         Cached(Texture<'a>),
-        Wait(u32),
+        Wait(f32),
     }
 
-    const IDLE_TIME: u32 = 100;
+    const IDLE_TIME: f32 = 20.0;
     let mut canvas_texture = CanvasTexture::Wait(IDLE_TIME);
 
     app.canvas.clear();
@@ -645,14 +646,14 @@ async fn main() -> anyhow::Result<()> {
                 app.canvas.copy(texture, None, None).unwrap();
             }
             CanvasTexture::Wait(ref mut t) => {
-                *t = t.saturating_sub(1);
+                *t = t.sub(app.frametime_frac()).max(0.0);
                 poll_http(&mut app);
 
                 app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
                 app.canvas.clear();
 
                 draw(&mut app, &mut screen);
-                if *t <= 0 && app.connection_overlay.timeout <= 0 {
+                if *t <= 0.0 && app.connection_overlay.timeout <= 0.0 {
                     let (width, height) = app.canvas.window().size();
                     let pixel_format = app.canvas.default_pixel_format();
                     let pitch = pixel_format.byte_size_per_pixel() * width as usize;
