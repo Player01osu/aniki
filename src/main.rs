@@ -24,7 +24,6 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
-use ui::login_screen::{get_anilist_media_list, send_login};
 use ui::FontManager;
 use ui::Screen;
 use ui::TextManager;
@@ -35,6 +34,7 @@ use ui::{color_hex, draw, BACKGROUND_COLOR};
 use lexopt::prelude::*;
 
 use crate::http::{poll_http, send_request, RequestKind};
+use crate::ui::login_screen::{get_anilist_media_list, send_login};
 
 mod anilist_serde;
 mod config;
@@ -189,6 +189,7 @@ pub struct App<'a, 'b> {
     pub mouse_scroll_y: f32,
     pub mouse_scroll_y_accel: f32,
     pub keyset: HashSet<Keycode>,
+    pub keyset_up: HashSet<Keycode>,
     pub keymod: keyboard::Mod,
 }
 
@@ -285,6 +286,7 @@ impl<'a, 'b> App<'a, 'b> {
 
             text_input: String::new(),
             keyset: HashSet::new(),
+            keyset_up: HashSet::new(),
             keymod: keyboard::Mod::NOMOD,
         }
     }
@@ -300,6 +302,10 @@ impl<'a, 'b> App<'a, 'b> {
 
     pub fn keydown(&self, keycode: Keycode) -> bool {
         self.keyset.contains(&keycode)
+    }
+
+    pub fn keyup(&self, keycode: Keycode) -> bool {
+        self.keyset_up.contains(&keycode)
     }
 
     pub fn frametime_frac(&self) -> f32 {
@@ -331,6 +337,7 @@ impl<'a, 'b> App<'a, 'b> {
         self.id = 0;
 
         self.keyset.clear();
+        self.keyset_up.clear();
 
         self.mouse_moved = false;
         self.resized = false;
@@ -391,7 +398,7 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     fn check_return(&self, id: usize) -> bool {
-        self.keyset.contains(&Keycode::Return) && self.state_id(id)
+        self.keyset_up.contains(&Keycode::Return) && self.state_id(id)
     }
 
     fn click_elem(&mut self, id: usize) -> bool {
@@ -627,6 +634,12 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     app.keyset.insert(keycode);
                     app.keymod = keymod;
+                }
+                Event::KeyUp {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    app.keyset_up.insert(keycode);
                 }
                 Event::Window {
                     win_event: sdl2::event::WindowEvent::Resized(_, _),

@@ -1028,8 +1028,7 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
 pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     let (window_width, window_height) = app.canvas.window().size();
     let (_, text_height) = app.text_manager.text_size(TOOLBAR_FONT_INFO, "W");
-    if app.keyset.is_empty() && app.keymod.contains(keyboard::Mod::LALTMOD) {
-        app.keymod.remove(keyboard::Mod::LALTMOD);
+    if app.keyup(Keycode::LAlt) {
         app.show_toolbar = !app.show_toolbar;
     };
 
