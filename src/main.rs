@@ -114,6 +114,7 @@ pub struct TitlePopupState {
     scroll: Scroll,
 }
 
+#[derive(Debug, Default)]
 pub struct MainState {
     pub selectable: BTreeSet<usize>,
     pub scroll: Scroll,
@@ -240,16 +241,7 @@ impl<'a, 'b> App<'a, 'b> {
                 state: ConnectionOverlayState::Disconnected,
             },
 
-            main_state: MainState {
-                scroll: Scroll::new(),
-                selectable: BTreeSet::new(),
-                selected: None,
-                extra_menu_id: None,
-                keyboard_override: false,
-                search_anime: None,
-                alias_anime: None,
-                search_previous: None,
-            },
+            main_state: MainState::default(),
 
             episode_state: EpisodeState {
                 episode_scroll: Scroll::new(),
