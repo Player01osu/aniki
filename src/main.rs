@@ -138,6 +138,12 @@ pub struct Scroll {
     pub max_scroll: i32,
 }
 
+impl Scroll {
+    pub fn new() -> Self {
+        Self { id: 0, scroll: 0, max_scroll: 0 }
+    }
+}
+
 pub struct App<'a, 'b> {
     pub canvas: Canvas<Window>,
     pub clipboard: ClipboardUtil,
@@ -181,7 +187,9 @@ pub struct App<'a, 'b> {
 
     id: usize,
     id_map: Vec<(Rect, bool)>,
+    id_scroll_map: Vec<usize>,
     id_updated: bool,
+    scroll_id: Option<usize>,
     click_id: Option<usize>,
     click_id_right: Option<usize>,
 
@@ -288,6 +296,8 @@ impl<'a, 'b> App<'a, 'b> {
             id: 0,
             id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
             id_updated: false,
+            id_scroll_map: vec![],
+            scroll_id: None,
             click_id: None,
             click_id_right: None,
 
@@ -341,6 +351,7 @@ impl<'a, 'b> App<'a, 'b> {
         }
 
         self.mouse_update_id();
+        self.scroll_update_id();
         self.id = 0;
 
         self.keyset.clear();
@@ -362,15 +373,9 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     /// Registers area to be scrollable and draws scrollbar
-    ///
-    /// NOTE: This function cannot stack areas, and doing so may cause
-    /// both areas to scroll at the same time
     fn register_scroll(&mut self, scroll: &mut Scroll, region: &mut Rect) {
         scroll.id = self.create_id(*region);
-
-        if self.mouse_region(*region) {
-            self.select_id(scroll.id);
-        }
+        self.id_scroll_map.push(scroll.id);
 
         if scroll.max_scroll as u32 >= region.height() {
             const PAD_TOP: u32 = 16;
@@ -389,7 +394,7 @@ impl<'a, 'b> App<'a, 'b> {
             *region = new_region;
         }
 
-        if self.state_id(scroll.id) {
+        if self.scroll_id == Some(scroll.id) {
             if self.keyset.contains(&Keycode::J)
             && scroll.scroll - region.height() as i32 >= -scroll.max_scroll
             {
@@ -405,6 +410,21 @@ impl<'a, 'b> App<'a, 'b> {
 
         scroll.scroll = scroll.scroll.max(-scroll.max_scroll + region.height() as i32);
         scroll.scroll = scroll.scroll.min(0);
+    }
+
+    fn scroll_update_id(&mut self) {
+        if self.mouse_moved {
+            let mouse_point = self.mouse_point();
+            for id in self.id_scroll_map.iter().rev() {
+                let region = self.rect_id(*id);
+                if region.contains_point(mouse_point) {
+                    self.scroll_id = Some(*id);
+                    return;
+                }
+            }
+            self.scroll_id = None;
+        }
+        self.id_scroll_map.clear();
     }
 
     fn mouse_update_id(&mut self) {
