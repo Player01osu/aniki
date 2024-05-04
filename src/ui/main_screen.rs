@@ -72,7 +72,7 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     app.canvas.set_draw_color(color_hex(0x101010));
     app.canvas.fill_rect(layout).unwrap();
 
-    let mut layout = layout.pad_top(10);
+    let mut layout = layout.pad_top(10).pad_bottom(5);
     app.textbox(textbox_state, true, 10, &mut layout);
     let scroll = get_scroll(&mut app.title_popup_state.scroll);
     app.register_scroll(scroll, &mut layout);
@@ -99,8 +99,9 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     let option_layout = layout;
     let option_layouts = option_layout.split_even_hori(text_height + 20);
 
+    app.title_popup_state.scroll.max_scroll = 0;
     for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
-        app.title_popup_state.scroll.max_scroll = layout.bottom() as i32 - layout_y;
+        app.title_popup_state.scroll.max_scroll = layout.y() as i32 - layout_y;
         let layout = layout.scroll_y(app.title_popup_state.scroll.scroll);
         let option = unsafe { &**option };
         let option_id = app.create_id(layout);
