@@ -162,6 +162,7 @@ impl<'b> JsonIndexed<'b> {
         self.optimized.optimize_json_db_search(&self.json_database)
     }
 
+    // TODO: Some queries are extremely slow (ie: "dragon ball")
     pub fn fuzzy_find_anime(&mut self, input: &str) -> Box<[&'b AnimeDatabaseData]> {
         let mut chars = input.trim().chars();
         let indexed_db: &mut JsonIndexed = unsafe { &mut *(self as *mut _) };
