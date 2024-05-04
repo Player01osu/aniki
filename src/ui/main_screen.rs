@@ -7,19 +7,19 @@ use sdl2::{
 };
 
 use crate::database::json_database::AnimeDatabaseData;
-use crate::{get_scroll, Format};
 use crate::{
     database,
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
+use crate::{get_scroll, rect, Format};
 
 use super::layout::Layout as _;
 use super::{
     color_hex_a, draw_button, draw_image_clip, draw_input_box, draw_missing_thumbnail,
     draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions,
-    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO,
-    TITLE_FONT_COLOR, TITLE_FONT_INFO, TITLE_HOVER_FONT_COLOR,
+    INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, TITLE_FONT_COLOR,
+    TITLE_FONT_INFO,
 };
 
 pub const CARD_RAD: i16 = 10;
@@ -33,9 +33,7 @@ const CARD_Y_PAD_INNER: i32 = 25;
 type Layout = Rect;
 
 // TODO: Clean up event handling.
-fn handle_main_events(
-    app: &mut App,
-) {
+fn handle_main_events(app: &mut App) {
     if app.keydown(Keycode::Escape) {
         app.running = false;
     } else if app.keydown(Keycode::F) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
@@ -467,35 +465,6 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         }
     }
 
-    if layout.contains_point(app.mouse_points())
-        && app.main_state.search_anime.is_none()
-        && app.main_state.alias_anime.is_none()
-    {
-        card_fg_color = color_hex(TITLE_HOVER_FONT_COLOR);
-        app.canvas.set_blend_mode(BlendMode::Blend);
-        selected = true;
-        let image_hover_color = color_hex_a(0x1010108B);
-        let image_rect = image_layout;
-        app.canvas
-            .rounded_box(
-                image_rect.left() as i16,
-                image_rect.top() as i16,
-                image_rect.right() as i16,
-                image_rect.bottom() as i16,
-                CARD_RAD,
-                image_hover_color,
-            )
-            .unwrap();
-
-        if app.main_state.extra_menu_id.is_some_and(|id| id == app.id as u32) {
-            draw_card_extra_menu(app, anime, top_layout, idx)
-        } else {
-            draw_card_hover_menu(app, anime, top_layout)
-        };
-    } else if app.main_state.extra_menu_id.is_some_and(|id| id == app.id as u32) {
-        app.main_state.extra_menu_id = None;
-    }
-
     // draw title background
     let f = {
         || {
@@ -535,5 +504,41 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         None,
         None,
     );
+
+    if layout.contains_point(app.mouse_points())
+        && app.main_state.search_anime.is_none()
+        && app.main_state.alias_anime.is_none()
+    {
+        app.canvas.set_blend_mode(BlendMode::Blend);
+        selected = true;
+        let image_hover_color = color_hex_a(0x1010108B);
+        let image_rect = image_layout;
+        app.canvas
+            .rounded_box(
+                image_rect.left() as i16,
+                image_rect.top() as i16,
+                image_rect.right() as i16,
+                image_rect.bottom() as i16,
+                CARD_RAD,
+                image_hover_color,
+            )
+            .unwrap();
+
+        if app
+            .main_state
+            .extra_menu_id
+            .is_some_and(|id| id == app.id as u32)
+        {
+            draw_card_extra_menu(app, anime, top_layout, idx)
+        } else {
+            draw_card_hover_menu(app, anime, top_layout)
+        };
+    } else if app
+        .main_state
+        .extra_menu_id
+        .is_some_and(|id| id == app.id as u32)
+    {
+        app.main_state.extra_menu_id = None;
+    }
     selected
 }

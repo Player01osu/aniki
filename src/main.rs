@@ -125,13 +125,7 @@ pub struct MainState {
     pub search_previous: Option<(String, Box<[*const AnimeDatabaseData]>)>,
 }
 
-impl Scroll {
-    pub fn new() -> Self {
-        Self { id: 0, scroll: 0, max_scroll: 0 }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Scroll {
     pub id: usize,
     pub scroll: i32,
