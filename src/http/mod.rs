@@ -147,7 +147,7 @@ pub fn poll_http(app: &mut App) {
                 }
                 Viewer::Err(_) => {
                     app.login_progress = LoginProgress::Failed;
-                    app.text_input.clear();
+                    app.login_state.textbox.text.clear();
                 }
             },
             HttpData::MediaList(media_list) => match media_list {

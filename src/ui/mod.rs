@@ -17,7 +17,6 @@ use anyhow::Result;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadSurface;
 use sdl2::keyboard::Keycode;
-use sdl2::keyboard::Mod;
 use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::BlendMode;
@@ -101,7 +100,7 @@ const BACK_BUTTON_FONT_INFO: (&str, u16) = (BACK_BUTTON_FONT, BACK_BUTTON_FONT_P
 
 const INPUT_BOX_FONT_PT: u16 = 24;
 const INPUT_BOX_FONT: &str = TITLE_FONT;
-const INPUT_BOX_FONT_INFO: (&str, u16) = (INPUT_BOX_FONT, INPUT_BOX_FONT_PT);
+pub const INPUT_BOX_FONT_INFO: (&str, u16) = (INPUT_BOX_FONT, INPUT_BOX_FONT_PT);
 
 const DEFAULT_BUTTON_FONT_PT: u16 = 24;
 const DEFAULT_BUTTON_FONT: &str = TITLE_FONT;
@@ -223,9 +222,9 @@ impl<'a, 'b> FontManager<'a, 'b> {
 }
 
 pub struct TextManager<'a, 'b> {
-    texture_creator: &'a TextureCreator<WindowContext>,
-    font_manager: FontManager<'a, 'b>,
-    cache: BTreeMap<TextManagerKey, Rc<Texture<'a>>>,
+    pub texture_creator: &'a TextureCreator<WindowContext>,
+    pub font_manager: FontManager<'a, 'b>,
+    pub cache: BTreeMap<TextManagerKey, Rc<Texture<'a>>>,
 }
 
 #[test]
@@ -259,8 +258,12 @@ impl<'a, 'b> TextManager<'a, 'b> {
         }
     }
 
-    fn text_size(&mut self, font_info: FontInfo, text: &str) -> (u32, u32) {
+    pub fn text_size(&mut self, font_info: FontInfo, text: &str) -> (u32, u32) {
         self.font_manager.load(font_info).size_of(text).unwrap()
+    }
+
+    pub fn font_height(&mut self, font_info: FontInfo) -> u32 {
+        self.font_manager.load(font_info).height() as u32
     }
 
     // TODO: Constant resizing of text can lead to memory leaks.
@@ -597,71 +600,6 @@ pub fn update_anilist_watched(tx: &HttpSender, access_token: &str, anime: &mut d
             );
         }
     }
-}
-
-pub fn draw_input_box(app: &mut App, x: i32, y: i32, width: u32) -> bool {
-    let font_info = INPUT_BOX_FONT_INFO;
-    let pad_side = 5;
-    let pad_height = 2;
-    let (text_width, text_height) = app.text_manager.text_size(font_info, &app.text_input);
-    let layout = Layout::new(x, y, width, text_height);
-    let text_shift_x = text_width.saturating_sub(width - pad_side as u32 * 2);
-    let text_layout = Layout::new(
-        layout.x + pad_side - text_shift_x as i32,
-        y,
-        width,
-        text_height,
-    );
-
-    app.input_util.start();
-
-    // Draw box
-    app.canvas.set_draw_color(color_hex(0x909090));
-    app.canvas.draw_rect(layout).unwrap();
-
-    // Draw cursor
-    app.canvas.set_draw_color(color_hex(0xB0B0B0));
-    app.canvas
-        .fill_rect(rect!(
-            text_layout.x + text_width as i32,
-            text_layout.y + pad_height,
-            1,
-            text_layout.height() - (pad_height as u32 * 2)
-        ))
-        .unwrap();
-
-    if !app.text_input.is_empty() {
-        let input: &str = unsafe { &*(app.text_input.as_str() as *const _) };
-        app.canvas.set_clip_rect(layout);
-        draw_text(
-            &mut app.canvas,
-            &mut app.text_manager,
-            font_info,
-            input,
-            color_hex(0x909090),
-            text_layout.x,
-            text_layout.y,
-            None,
-            None,
-        );
-        app.canvas.set_clip_rect(None);
-    }
-
-    if app.keydown(Keycode::Backspace) {
-        app.text_input.pop();
-    } else if app.keymod.contains(Mod::LCTRLMOD) && app.keydown(Keycode::V) {
-        match app.clipboard.clipboard_text() {
-            Ok(s) => {
-                app.text_input.push_str(&s);
-            }
-            Err(e) => {
-                dbg!(e);
-            }
-        };
-    } else if app.keydown(Keycode::Return) {
-        return true;
-    }
-    false
 }
 
 fn draw_image_clip(

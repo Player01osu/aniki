@@ -8,13 +8,19 @@ use crate::{rect, send_request, App, HttpSender, LoginProgress, RequestKind};
 use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::layout::Layout;
 use super::{
-    color_hex, draw_button, draw_input_box, draw_text, draw_text_centered, text_size,
-    Screen, Style, DEFAULT_BUTTON_FONT, H1_FONT_INFO, H2_FONT_INFO, INPUT_BOX_FONT_INFO,
+    color_hex, draw_button, draw_text, draw_text_centered, text_size, Screen,
+    Style, DEFAULT_BUTTON_FONT, H1_FONT_INFO, H2_FONT_INFO, INPUT_BOX_FONT_INFO,
 };
 
 pub fn get_anilist_media_list(tx: &HttpSender, user_id: u64, access_token: &str) {
     let access_token = access_token.to_string();
-    send_request(tx, RequestKind::GetAnilistMediaList { user_id, access_token });
+    send_request(
+        tx,
+        RequestKind::GetAnilistMediaList {
+            user_id,
+            access_token,
+        },
+    );
 }
 
 pub fn send_login(tx: &HttpSender, access_token: &str) {
@@ -79,14 +85,8 @@ pub fn draw_login(app: &mut App, layout: Rect) {
 
     // draw `access token` input field
     let (_, input_text_height) = app.text_manager.text_size(INPUT_BOX_FONT_INFO, "W");
-    let (input_box_layout, rest) = rest.split_hori(input_text_height * 2, rest.height());
-
-    // Pad 130 pixels on left and right
-    let (_, input_box_layout) = input_box_layout.split_vert(130, input_box_layout.width());
-    let (input_box_layout, _) =
-        input_box_layout.split_vert(input_box_layout.width() - 130, input_box_layout.width());
-
-    let (input_box_title_layout, input_box_layout) = input_box_layout.split_hori(1, 2);
+    let (input_box_title_layout, mut rest) = rest.split_hori(input_text_height, rest.height());
+    let input_box_title_layout = input_box_title_layout.pad_left(130).pad_right(130);
 
     draw_text(
         &mut app.canvas,
@@ -100,12 +100,8 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         None,
     );
 
-    let input_box_submit = draw_input_box(
-        app,
-        input_box_layout.x,
-        input_box_layout.y,
-        input_box_layout.width(),
-    );
+    let textbox_state = unsafe { &mut *(&mut app.login_state.textbox as *mut _) };
+    let input_box_submit = app.textbox(textbox_state, true, 130, &mut rest);
 
     // draw submit button
     let button_width_pad = 28;
@@ -139,7 +135,7 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         .font_info(button_font_info);
     if draw_button(app, "Submit", submit_button_style, submit_button_layout) || input_box_submit {
         app.login_progress = LoginProgress::Started;
-        let access_token = &app.text_input;
+        let access_token = &app.login_state.textbox.text;
         send_login(&app.http_tx, access_token);
     }
 
@@ -188,7 +184,8 @@ pub fn draw_login(app: &mut App, layout: Rect) {
                 font_info,
                 text,
                 color_hex(0xA04040),
-                input_box_title_layout.x + input_box_title_layout.width() as i32 - text_width as i32,
+                input_box_title_layout.x + input_box_title_layout.width() as i32
+                    - text_width as i32,
                 input_box_title_layout.y,
                 None,
                 None,

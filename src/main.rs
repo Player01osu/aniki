@@ -4,12 +4,14 @@ use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
 use http::{HttpData, HttpSender};
+use lexopt::prelude::*;
 use sdl2::clipboard::ClipboardUtil;
-use sdl2::keyboard;
 use sdl2::keyboard::TextInputUtil;
+use sdl2::keyboard::{self, Mod};
 use sdl2::mouse::MouseButton;
+use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use sdl2::render::Texture;
+use sdl2::render::{Texture, TextureQuery};
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
 use sdl2::{
@@ -31,12 +33,11 @@ use ui::TextureManager;
 use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
 use ui::{color_hex, draw, BACKGROUND_COLOR};
-use lexopt::prelude::*;
 
 use crate::http::{poll_http, send_request, RequestKind};
 use crate::ui::layout::Layout;
 use crate::ui::login_screen::{get_anilist_media_list, send_login};
-use crate::ui::SCROLLBAR_COLOR;
+use crate::ui::{INPUT_BOX_FONT_INFO, SCROLLBAR_COLOR};
 
 mod anilist_serde;
 mod config;
@@ -98,26 +99,37 @@ pub enum ConnectionOverlayState {
 }
 
 #[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct EpisodeState {
     episode_scroll: Scroll,
     selectable: BTreeSet<usize>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AliasPopupState {
     selectable: BTreeSet<usize>,
+    scroll: Scroll,
+    textbox: Textbox,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TitlePopupState {
     selectable: BTreeSet<usize>,
     scroll: Scroll,
+    textbox: Textbox,
+}
+
+#[derive(Debug, Default)]
+pub struct LoginState {
+    selectable: BTreeSet<usize>,
+    textbox: Textbox,
 }
 
 #[derive(Debug, Default)]
 pub struct MainState {
     pub selectable: BTreeSet<usize>,
     pub scroll: Scroll,
+    pub extra_menu_scroll: Scroll,
     pub selected: Option<usize>,
     pub extra_menu_id: Option<u32>,
     pub keyboard_override: bool,
@@ -133,9 +145,22 @@ pub struct Scroll {
     pub max_scroll: i32,
 }
 
+#[derive(Debug, Clone, Default)]
+struct Textbox {
+    id: usize,
+    text: String,
+    history: Vec<String>,
+    history_time: f32,
+    cursor_location: usize,
+    view_offset: i32,
+}
 impl Scroll {
     pub fn new() -> Self {
-        Self { id: 0, scroll: 0, max_scroll: 0 }
+        Self {
+            id: 0,
+            scroll: 0,
+            max_scroll: 0,
+        }
     }
 }
 
@@ -162,6 +187,7 @@ pub struct App<'a, 'b> {
 
     pub main_state: MainState,
     pub episode_state: EpisodeState,
+    pub login_state: LoginState,
 
     pub alias_popup_state: AliasPopupState,
     pub title_popup_state: TitlePopupState,
@@ -187,8 +213,9 @@ pub struct App<'a, 'b> {
     scroll_id: Option<usize>,
     click_id: Option<usize>,
     click_id_right: Option<usize>,
+    textbox_id: Option<usize>,
 
-    pub text_input: String,
+    pub text: String,
     pub mouse_x: i32,
     pub mouse_y: i32,
     pub mouse_scroll_x: f32,
@@ -242,20 +269,10 @@ impl<'a, 'b> App<'a, 'b> {
             },
 
             main_state: MainState::default(),
-
-            episode_state: EpisodeState {
-                episode_scroll: Scroll::new(),
-                selectable: BTreeSet::new(),
-            },
-
-            alias_popup_state: AliasPopupState {
-                selectable: BTreeSet::new(),
-            },
-
-            title_popup_state: TitlePopupState {
-                selectable: BTreeSet::new(),
-                scroll: Scroll::new(),
-            },
+            episode_state: EpisodeState::default(),
+            login_state: LoginState::default(),
+            alias_popup_state: AliasPopupState::default(),
+            title_popup_state: TitlePopupState::default(),
 
             //state_flag: 0,
             mouse_left_up: false,
@@ -286,8 +303,9 @@ impl<'a, 'b> App<'a, 'b> {
             scroll_id: None,
             click_id: None,
             click_id_right: None,
+            textbox_id: None,
 
-            text_input: String::new(),
+            text: String::new(),
             keyset: HashSet::new(),
             keyset_up: HashSet::new(),
             keymod: keyboard::Mod::NOMOD,
@@ -364,7 +382,7 @@ impl<'a, 'b> App<'a, 'b> {
         self.id_scroll_map.push(scroll.id);
 
         if scroll.max_scroll as u32 >= region.height() {
-            const PAD_TOP: u32 = 16;
+            const PAD_TOP: u32 = 0;
             let (new_region, scroll_layout) = region.split_vert(796, 800);
             let bar_height =
                 scroll_layout.height() * scroll_layout.height() / scroll.max_scroll as u32;
@@ -382,7 +400,7 @@ impl<'a, 'b> App<'a, 'b> {
 
         if self.scroll_id == Some(scroll.id) {
             if self.keyset.contains(&Keycode::J)
-            && scroll.scroll - region.height() as i32 >= -scroll.max_scroll
+                && scroll.scroll - region.height() as i32 >= -scroll.max_scroll
             {
                 scroll.scroll -= 6;
             }
@@ -394,8 +412,200 @@ impl<'a, 'b> App<'a, 'b> {
             scroll.scroll += self.mouse_scroll_y as i32;
         }
 
-        scroll.scroll = scroll.scroll.max(-scroll.max_scroll + region.height() as i32);
+        scroll.scroll = scroll
+            .scroll
+            .max(-scroll.max_scroll + region.height() as i32);
         scroll.scroll = scroll.scroll.min(0);
+    }
+
+    fn textbox(
+        &mut self,
+        textbox_state: &mut Textbox,
+        enabled: bool,
+        sidepad: i32,
+        region: &mut Rect,
+    ) -> bool {
+        self.input_util.start();
+        let font_info = INPUT_BOX_FONT_INFO;
+        let height = self.text_manager.font_height(font_info);
+        let (text_border_region, new_region) = region.split_hori(height + 12, region.height());
+        let text_border_region = text_border_region.pad_left(sidepad).pad_right(sidepad);
+        let text_region = Rect::from_center(
+            text_border_region.center(),
+            text_border_region.width() - 10,
+            height,
+        );
+
+        *region = new_region.pad_top(6);
+        textbox_state.id = self.create_id(text_border_region);
+        if self.click_elem(textbox_state.id) {
+            self.textbox_id = Some(textbox_state.id);
+            self.text.clear();
+        } else if false && self.mouse_left_up && self.click_id != Some(textbox_state.id) {
+            // TODO: This breaks selecting textboxes with multiple textboxes.
+            //
+            // Because the click id for the next thing is not the same, it sets textbox_id
+            // even though the previous textbox was clicked
+            self.textbox_id = None;
+        }
+
+        self.canvas.set_draw_color(color_hex(0x909090));
+        self.canvas.draw_rect(text_border_region).unwrap();
+
+        let mut cursor_offset = 0;
+        let text_color = color_hex(0xB0B0B0);
+        if !textbox_state.text.is_empty() {
+            let font_texture =
+                self.text_manager
+                    .load(&textbox_state.text, font_info, text_color, None);
+            let TextureQuery { width, height, .. } = font_texture.query();
+            cursor_offset = self
+                .text_manager
+                .text_size(
+                    font_info,
+                    &textbox_state.text[0..textbox_state.cursor_location],
+                )
+                .0 as i32;
+            if cursor_offset < -textbox_state.view_offset {
+                textbox_state.view_offset += -textbox_state.view_offset - cursor_offset;
+            } else if cursor_offset > -textbox_state.view_offset + text_region.width() as i32 {
+                textbox_state.view_offset -=
+                    cursor_offset + textbox_state.view_offset - text_region.width() as i32;
+            }
+            let text_rect = rect!(
+                text_region.x + textbox_state.view_offset,
+                text_region.y,
+                width,
+                height
+            );
+            self.canvas.set_clip_rect(text_region);
+            self.canvas.copy(&font_texture, None, text_rect).unwrap();
+            self.canvas.set_clip_rect(None);
+        }
+        fn is_skip_char(c: char) -> bool {
+            !c.is_ascii_alphanumeric()
+        }
+
+        if !enabled {
+            self.canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+            self.canvas
+                .set_draw_color(Color::RGBA(0x10, 0x10, 0x10, 0xA0));
+            self.canvas.fill_rect(text_border_region).unwrap();
+        } else if self.textbox_id == Some(textbox_state.id) {
+            use Keycode::*;
+            let key = |k| self.keyset.contains(k);
+            let kmod = |m| self.keymod.contains(m);
+            let cursor_rect = rect!(
+                text_region.x + textbox_state.view_offset + cursor_offset,
+                text_region.y,
+                1,
+                height
+            );
+
+            self.canvas.set_draw_color(text_color);
+            self.canvas.fill_rect(cursor_rect).unwrap();
+            if !kmod(Mod::LCTRLMOD) && !kmod(Mod::LALTMOD) {
+                for c in self.text.drain(..) {
+                    textbox_state.text.insert(textbox_state.cursor_location, c);
+                    textbox_state.cursor_location += 1;
+                }
+            }
+            if kmod(Mod::LCTRLMOD) && key(&Z) {
+                // TODO
+            } else if (kmod(Mod::LCTRLMOD) && key(&Left)) || (kmod(Mod::LALTMOD) && key(&B)) {
+                let bytes = textbox_state.text.as_bytes();
+                if textbox_state.cursor_location > 0 {
+                    while textbox_state.cursor_location > 0
+                        && is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                    {
+                        textbox_state.cursor_location -= 1;
+                    }
+
+                    while textbox_state.cursor_location > 0
+                        && !is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                    {
+                        textbox_state.cursor_location -= 1;
+                    }
+                }
+            } else if kmod(Mod::LCTRLMOD) && key(&Right) || (kmod(Mod::LALTMOD) && key(&F)) {
+                let bytes = textbox_state.text.as_bytes();
+                let len = textbox_state.text.len();
+                while textbox_state.cursor_location < len
+                    && is_skip_char(bytes[textbox_state.cursor_location] as char)
+                {
+                    textbox_state.cursor_location += 1;
+                }
+
+                while textbox_state.cursor_location < len
+                    && !is_skip_char(bytes[textbox_state.cursor_location] as char)
+                {
+                    textbox_state.cursor_location += 1;
+                }
+
+                while textbox_state.cursor_location < len
+                    && !(bytes[textbox_state.cursor_location] as char).is_whitespace()
+                    && !(bytes[textbox_state.cursor_location] as char).is_ascii_alphanumeric()
+                {
+                    textbox_state.cursor_location += 1;
+                }
+            } else if kmod(Mod::LCTRLMOD) && (key(&Backspace) || key(&W)) {
+                let bytes = textbox_state.text.as_bytes();
+                if textbox_state.cursor_location > 0 {
+                    let end = textbox_state.cursor_location;
+                    while textbox_state.cursor_location > 0
+                        && is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                    {
+                        textbox_state.cursor_location -= 1;
+                    }
+
+                    while textbox_state.cursor_location > 0
+                        && !is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                    {
+                        textbox_state.cursor_location -= 1;
+                    }
+                    let end_range = end - textbox_state.cursor_location;
+                    let (lhs, rhs) = textbox_state.text.split_at(textbox_state.cursor_location);
+                    let mut new_text = lhs.to_string();
+                    new_text.push_str(&rhs[end_range..]);
+                    textbox_state.text = new_text;
+                }
+            } else if key(&End) || (kmod(Mod::LCTRLMOD) && key(&E)) {
+                textbox_state.cursor_location = textbox_state.text.len();
+            } else if key(&Home) || (kmod(Mod::LCTRLMOD) && key(&A)) {
+                textbox_state.cursor_location = 0;
+            } else if key(&Backspace) {
+                if textbox_state.cursor_location > 0 {
+                    textbox_state.text.remove(textbox_state.cursor_location - 1);
+                    textbox_state.cursor_location -= 1;
+                }
+            } else if kmod(Mod::LCTRLMOD) && key(&U) {
+                let (_, new_text) = textbox_state.text.split_at(textbox_state.cursor_location);
+                textbox_state.text = new_text.to_string();
+                textbox_state.cursor_location = 0;
+            } else if key(&Left) || (kmod(Mod::LCTRLMOD) && key(&B)) {
+                if textbox_state.cursor_location > 0 {
+                    textbox_state.cursor_location -= 1;
+                }
+            } else if key(&Right) || (kmod(Mod::LCTRLMOD) && key(&F)) {
+                if textbox_state.cursor_location < textbox_state.text.len() {
+                    textbox_state.cursor_location += 1;
+                }
+            } else if kmod(Mod::LCTRLMOD) && key(&V) {
+                match self.clipboard.clipboard_text() {
+                    Ok(s) => {
+                        textbox_state.text.push_str(&s);
+                        textbox_state.cursor_location += s.len();
+                    }
+                    Err(e) => {
+                        dbg!(e);
+                    }
+                };
+            }
+
+            return key(&Return);
+        }
+
+        false
     }
 
     fn scroll_update_id(&mut self) {
@@ -713,7 +923,7 @@ async fn main() -> anyhow::Result<()> {
                     app.mouse_y = 0;
                 }
                 Event::TextInput { text, .. } => {
-                    app.text_input.push_str(&text);
+                    app.text = text;
                 }
                 _ => {}
             }
