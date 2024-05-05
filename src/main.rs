@@ -70,7 +70,12 @@ impl StringManager {
         Self { map: vec![] }
     }
 
-    pub fn load<'a, 'b>(&'a mut self, ptr: *const u8, format: Format, f: impl FnOnce() -> String) -> &'b str {
+    pub fn load<'a, 'b>(
+        &'a mut self,
+        ptr: *const u8,
+        format: Format,
+        f: impl FnOnce() -> String,
+    ) -> &'b str {
         match self
             .map
             .iter()
@@ -309,8 +314,11 @@ fn textbox(
     }
 
     if !enabled {
-        context.canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
-        context.canvas
+        context
+            .canvas
+            .set_blend_mode(sdl2::render::BlendMode::Blend);
+        context
+            .canvas
             .set_draw_color(Color::RGBA(0x10, 0x10, 0x10, 0xA0));
         context.canvas.fill_rect(text_border_region).unwrap();
     } else if context.textbox_id == Some(textbox_state.id) {
@@ -430,7 +438,7 @@ fn textbox(
     false
 }
 
-impl<'a, 'b> App<'a, 'b> {
+impl<'a> App<'a, '_> {
     pub fn new(
         canvas: Canvas<Window>,
         clipboard: ClipboardUtil,
@@ -443,48 +451,7 @@ impl<'a, 'b> App<'a, 'b> {
         let (http_tx, http_rx) = mpsc::channel();
 
         Self {
-            context: Context {
-                canvas,
-                clipboard,
-                input_util,
-                text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
-                image_manager: TextureManager::new(texture_creator),
-                string_manager: StringManager::new(),
-                mouse_left_up: false,
-                mouse_left_down: false,
-                mouse_right_up: false,
-                mouse_right_down: false,
-                mouse_moved: false,
-
-                weights: ScrollWeights {
-                    accel: 10.990031,
-                    accel_accel: 1.9800003,
-                    decel_decel: 3.119999,
-                    decel: 1.3700006,
-                },
-
-                resized: false,
-
-                mouse_x: 0,
-                mouse_y: 0,
-                mouse_scroll_x: 0.0,
-                mouse_scroll_y: 0.0,
-                mouse_scroll_y_accel: 0.0,
-
-                id: 0,
-                id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
-                id_updated: false,
-                id_scroll_map: vec![],
-                scroll_id: None,
-                click_id: None,
-                click_id_right: None,
-                textbox_id: None,
-
-                text: String::new(),
-                keyset: HashSet::new(),
-                keyset_up: HashSet::new(),
-                keymod: keyboard::Mod::NOMOD,
-            },
+            context: Context::new(canvas, clipboard, input_util, ttf_ctx, texture_creator),
             database,
             next_screen: None,
             screen: Screen::Main,
@@ -509,7 +476,6 @@ impl<'a, 'b> App<'a, 'b> {
             login_state: LoginState::default(),
             alias_popup_state: AliasPopupState::default(),
             title_popup_state: TitlePopupState::default(),
-
             //state_flag: 0,
         }
     }
@@ -539,10 +505,12 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     pub fn reset_frame_state(&mut self) {
-        self.context.mouse_scroll_y_accel =
-            self.context.mouse_scroll_y_accel * self.frametime_frac() / self.context.weights.decel_decel;
+        self.context.mouse_scroll_y_accel = self.context.mouse_scroll_y_accel
+            * self.frametime_frac()
+            / self.context.weights.decel_decel;
         self.context.mouse_scroll_y =
-            self.context.mouse_scroll_y * self.context.mouse_scroll_y_accel * 0.1 / self.context.weights.decel;
+            self.context.mouse_scroll_y * self.context.mouse_scroll_y_accel * 0.1
+                / self.context.weights.decel;
 
         if self.context.mouse_left_up {
             self.context.mouse_left_down = false;
@@ -570,12 +538,19 @@ impl<'a, 'b> App<'a, 'b> {
     fn swap_screen(&mut self) {
         if let Some(next_screen) = self.next_screen.take() {
             self.screen = next_screen;
-            self.context.id_map.resize(0, (Rect::new(0, 0, 0, 0), false));
+            self.context
+                .id_map
+                .resize(0, (Rect::new(0, 0, 0, 0), false));
         }
     }
 }
 
-fn switch(context: &mut Context, switch_state: &mut Switch, label: &str, region: &mut Rect) -> bool {
+fn switch(
+    context: &mut Context,
+    switch_state: &mut Switch,
+    label: &str,
+    region: &mut Rect,
+) -> bool {
     const SIDE_PAD: i32 = 34;
     let height = context.text_manager.font_height(INPUT_BOX_FONT_INFO);
     let (switch_region, new_region) = region.split_hori(height as u32 + 12, region.height());
@@ -591,9 +566,10 @@ fn switch(context: &mut Context, switch_state: &mut Switch, label: &str, region:
 
     let label_region = label_region.pad_left(SIDE_PAD);
 
-    let label_texture = context
-        .text_manager
-        .load(label, INPUT_BOX_FONT_INFO, color_hex(0xB0B0B0), None);
+    let label_texture =
+        context
+            .text_manager
+            .load(label, INPUT_BOX_FONT_INFO, color_hex(0xB0B0B0), None);
     let TextureQuery { width, height, .. } = label_texture.query();
     let label_center = label_region.center();
     let label_rect = rect!(
@@ -602,15 +578,18 @@ fn switch(context: &mut Context, switch_state: &mut Switch, label: &str, region:
         width,
         height
     );
-    context.canvas.copy(&label_texture, None, label_rect).unwrap();
+    context
+        .canvas
+        .copy(&label_texture, None, label_rect)
+        .unwrap();
 
     if context.click_elem(switch_state.id) {
         switch_state.toggled = !switch_state.toggled;
     }
 
     if switch_state.toggled {
-        let (_slider, head) = switchable_region
-            .split_vert(switchable_region.width() - 25, switchable_region.width());
+        let (_slider, head) =
+            switchable_region.split_vert(switchable_region.width() - 25, switchable_region.width());
         context.canvas.set_draw_color(color_hex(0x6B549C));
         context.canvas.fill_rect(switchable_region).unwrap();
         context.canvas.set_draw_color(color_hex(0x304A6C));
@@ -633,8 +612,7 @@ fn register_scroll(context: &mut Context, scroll: &mut Scroll, region: &mut Rect
     if scroll.max_scroll as u32 >= region.height() {
         const PAD_TOP: u32 = 0;
         let (new_region, scroll_layout) = region.split_vert(796, 800);
-        let bar_height =
-            scroll_layout.height() * scroll_layout.height() / scroll.max_scroll as u32;
+        let bar_height = scroll_layout.height() * scroll_layout.height() / scroll.max_scroll as u32;
         let bar_scroll = scroll.scroll * scroll_layout.height() as i32 / scroll.max_scroll;
         let bar_rect = rect!(
             scroll_layout.x(),
@@ -667,7 +645,58 @@ fn register_scroll(context: &mut Context, scroll: &mut Scroll, region: &mut Rect
     scroll.scroll = scroll.scroll.min(0);
 }
 
-impl Context<'_, '_> {
+impl<'a> Context<'a, '_> {
+    fn new(
+        canvas: Canvas<Window>,
+        clipboard: ClipboardUtil,
+        input_util: TextInputUtil,
+        ttf_ctx: &'a Sdl2TtfContext,
+        texture_creator: &'a TextureCreator<WindowContext>,
+    ) -> Self {
+        Self {
+            canvas,
+            clipboard,
+            input_util,
+            text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
+            image_manager: TextureManager::new(texture_creator),
+            string_manager: StringManager::new(),
+            mouse_left_up: false,
+            mouse_left_down: false,
+            mouse_right_up: false,
+            mouse_right_down: false,
+            mouse_moved: false,
+
+            weights: ScrollWeights {
+                accel: 10.990031,
+                accel_accel: 1.9800003,
+                decel_decel: 3.119999,
+                decel: 1.3700006,
+            },
+
+            resized: false,
+
+            mouse_x: 0,
+            mouse_y: 0,
+            mouse_scroll_x: 0.0,
+            mouse_scroll_y: 0.0,
+            mouse_scroll_y_accel: 0.0,
+
+            id: 0,
+            id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
+            id_updated: false,
+            id_scroll_map: vec![],
+            scroll_id: None,
+            click_id: None,
+            click_id_right: None,
+            textbox_id: None,
+
+            text: String::new(),
+            keyset: HashSet::new(),
+            keyset_up: HashSet::new(),
+            keymod: keyboard::Mod::NOMOD,
+        }
+    }
+
     fn scroll_update_id(&mut self) {
         if self.mouse_moved {
             let mouse_point = self.mouse_point();
@@ -913,7 +942,10 @@ async fn main() -> anyhow::Result<()> {
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
         // TODO: Id needs to get reset even when the window is not in focus
-        if true || app.context.canvas.window().has_input_focus() || app.context.canvas.window().has_mouse_focus() {
+        if true
+            || app.context.canvas.window().has_input_focus()
+            || app.context.canvas.window().has_mouse_focus()
+        {
             app.reset_frame_state()
         }
 
@@ -955,8 +987,8 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     if app.context.mouse_scroll_y.abs() <= 80.0 {
                         app.context.mouse_scroll_y_accel += app.context.weights.accel_accel * 0.32;
-                        app.context.mouse_scroll_y +=
-                            precise_y.signum() * scroll_func((precise_y * app.context.weights.accel).abs())
+                        app.context.mouse_scroll_y += precise_y.signum()
+                            * scroll_func((precise_y * app.context.weights.accel).abs())
                     }
                     app.context.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
                 }
@@ -1001,7 +1033,9 @@ async fn main() -> anyhow::Result<()> {
                 *t = t.sub(app.frametime_frac()).max(0.0);
                 poll_http(&mut app);
 
-                app.context.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
+                app.context
+                    .canvas
+                    .set_draw_color(color_hex(BACKGROUND_COLOR));
                 app.context.canvas.clear();
 
                 draw(&mut app, &mut screen);
@@ -1010,7 +1044,8 @@ async fn main() -> anyhow::Result<()> {
                     let pixel_format = app.context.canvas.default_pixel_format();
                     let pitch = pixel_format.byte_size_per_pixel() * width as usize;
                     let pixels = app
-                        .context.canvas
+                        .context
+                        .canvas
                         .read_pixels(app.context.window_rect(), pixel_format)
                         .unwrap();
                     let mut texture = texture_creator
@@ -1087,7 +1122,9 @@ async fn main() -> anyhow::Result<()> {
         if matches!(canvas_texture, CanvasTexture::Cached(_)) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
-        if !(app.context.canvas.window().has_input_focus() || app.context.canvas.window().has_mouse_focus()) {
+        if !(app.context.canvas.window().has_input_focus()
+            || app.context.canvas.window().has_mouse_focus())
+        {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
         }
     }
