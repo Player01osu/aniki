@@ -14,6 +14,7 @@ use sdl2::rect::Rect;
 use sdl2::render::{Texture, TextureQuery};
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
+use sdl2::EventPump;
 use sdl2::{
     event::Event,
     keyboard::Keycode,
@@ -184,25 +185,23 @@ pub struct Context<'a, 'b> {
     pub image_manager: TextureManager<'a>,
     pub string_manager: StringManager,
 
-    // bitfield for:
-    //   mouse_moved
-    //   mouse_clicked_left
-    //   mouse_clicked_right
-    //   resized
-    //state_flag: u8,
-    mouse_left_up: bool,
-    mouse_left_down: bool,
-    mouse_right_up: bool,
-    mouse_right_down: bool,
-    mouse_moved: bool,
-    resized: bool,
+    /// bitfield for:
+    /// 1  => mouse_moved
+    /// 2  => mouse_left_up
+    /// 4  => mouse_left_down
+    /// 8  => mouse_right_up
+    /// 16 => mouse_right_down
+    /// 32 => resized
+    /// 64 => id_updated
+    state_flag: u8,
+
+    event_pump: EventPump,
 
     weights: ScrollWeights,
 
     id: usize,
     id_map: Vec<(Rect, bool)>,
     id_scroll_map: Vec<usize>,
-    id_updated: bool,
     scroll_id: Option<usize>,
     click_id: Option<usize>,
     click_id_right: Option<usize>,
@@ -267,7 +266,7 @@ fn textbox(
     if context.click_elem(textbox_state.id) {
         context.textbox_id = Some(textbox_state.id);
         context.text.clear();
-    } else if false && context.mouse_left_up && context.click_id != Some(textbox_state.id) {
+    } else if false && context.mouse_left_up() && context.click_id != Some(textbox_state.id) {
         // TODO: This breaks selecting textboxes with multiple textboxes.
         //
         // Because the click id for the next thing is not the same, it sets textbox_id
@@ -447,11 +446,12 @@ impl<'a> App<'a, '_> {
         ttf_ctx: &'a Sdl2TtfContext,
         texture_creator: &'a TextureCreator<WindowContext>,
         thumbnail_path: String,
+        event_pump: EventPump
     ) -> Self {
         let (http_tx, http_rx) = mpsc::channel();
 
         Self {
-            context: Context::new(canvas, clipboard, input_util, ttf_ctx, texture_creator),
+            context: Context::new(canvas, clipboard, input_util, ttf_ctx, texture_creator, event_pump),
             database,
             next_screen: None,
             screen: Screen::Main,
@@ -480,21 +480,21 @@ impl<'a> App<'a, '_> {
         }
     }
 
-    pub fn get_string(&mut self, s: &str) -> Rc<str> {
-        // TODO: intern this boy
-        Rc::from(s)
-    }
-
     pub fn mouse_points(&self) -> (i32, i32) {
-        (self.context.mouse_x, self.context.mouse_y)
+        self.context.mouse_points()
     }
 
     pub fn keydown(&self, keycode: Keycode) -> bool {
-        self.context.keyset.contains(&keycode)
+        self.context.keydown(keycode)
     }
 
     pub fn keyup(&self, keycode: Keycode) -> bool {
-        self.context.keyset_up.contains(&keycode)
+        self.context.keyup(keycode)
+    }
+
+    pub fn get_string(&mut self, s: &str) -> Rc<str> {
+        // TODO: intern this boy
+        Rc::from(s)
     }
 
     pub fn frametime_frac(&self) -> f32 {
@@ -512,15 +512,13 @@ impl<'a> App<'a, '_> {
             self.context.mouse_scroll_y * self.context.mouse_scroll_y_accel * 0.1
                 / self.context.weights.decel;
 
-        if self.context.mouse_left_up {
-            self.context.mouse_left_down = false;
-            self.context.mouse_left_up = false;
+        if self.context.mouse_left_up() {
+            self.context.state_flag &= !(2 | 4);
             self.context.click_id = None;
         }
 
-        if self.context.mouse_right_up {
-            self.context.mouse_right_down = false;
-            self.context.mouse_right_up = false;
+        if self.context.mouse_right_up() {
+            self.context.state_flag &= !(8 | 16);
             self.context.click_id = None;
         }
 
@@ -531,8 +529,7 @@ impl<'a> App<'a, '_> {
         self.context.keyset.clear();
         self.context.keyset_up.clear();
 
-        self.context.mouse_moved = false;
-        self.context.resized = false;
+        self.context.state_flag &= !(1 | 32);
     }
 
     fn swap_screen(&mut self) {
@@ -652,6 +649,7 @@ impl<'a> Context<'a, '_> {
         input_util: TextInputUtil,
         ttf_ctx: &'a Sdl2TtfContext,
         texture_creator: &'a TextureCreator<WindowContext>,
+        event_pump: EventPump
     ) -> Self {
         Self {
             canvas,
@@ -660,11 +658,7 @@ impl<'a> Context<'a, '_> {
             text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
             image_manager: TextureManager::new(texture_creator),
             string_manager: StringManager::new(),
-            mouse_left_up: false,
-            mouse_left_down: false,
-            mouse_right_up: false,
-            mouse_right_down: false,
-            mouse_moved: false,
+            event_pump,
 
             weights: ScrollWeights {
                 accel: 10.990031,
@@ -673,7 +667,7 @@ impl<'a> Context<'a, '_> {
                 decel: 1.3700006,
             },
 
-            resized: false,
+            state_flag: 0,
 
             mouse_x: 0,
             mouse_y: 0,
@@ -683,7 +677,6 @@ impl<'a> Context<'a, '_> {
 
             id: 0,
             id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
-            id_updated: false,
             id_scroll_map: vec![],
             scroll_id: None,
             click_id: None,
@@ -697,8 +690,127 @@ impl<'a> Context<'a, '_> {
         }
     }
 
+    pub fn mouse_points(&self) -> (i32, i32) {
+        (self.mouse_x, self.mouse_y)
+    }
+
+    pub fn keydown(&self, keycode: Keycode) -> bool {
+        self.keyset.contains(&keycode)
+    }
+
+    pub fn keyup(&self, keycode: Keycode) -> bool {
+        self.keyset_up.contains(&keycode)
+    }
+
+    pub const fn mouse_moved(&self) -> bool {
+        self.state_flag & 1 != 0
+    }
+
+    pub const fn mouse_left_up(&self) -> bool {
+        self.state_flag & 2 != 0
+    }
+
+    pub const fn mouse_left_down(&self) -> bool {
+        self.state_flag & 4 != 0
+    }
+
+    pub const fn mouse_right_up(&self) -> bool {
+        self.state_flag & 8 != 0
+    }
+
+    pub const fn mouse_right_down(&self) -> bool {
+        self.state_flag & 16 != 0
+    }
+
+    pub const fn resized(&self) -> bool {
+        self.state_flag & 32 != 0
+    }
+
+    pub const fn id_updated(&self) -> bool {
+        self.state_flag & 64 != 0
+    }
+
+    fn poll_event(&mut self) -> Option<bool> {
+        for event in self.event_pump.poll_iter() {
+            self.state_flag |= event.is_mouse() as u8;
+
+            match event {
+                Event::Quit { .. } => return None,
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Left,
+                    ..
+                } => {
+                    self.state_flag |= 4;
+                }
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Right,
+                    ..
+                } => {
+                    self.state_flag |= 16;
+                }
+
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Left,
+                    ..
+                } => {
+                    self.state_flag |= 2;
+                }
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Right,
+                    ..
+                } => {
+                    self.state_flag |= 8;
+                }
+                Event::MouseWheel {
+                    precise_y,
+                    ..
+                } => {
+                    if self.mouse_scroll_y.abs() <= 80.0 {
+                        self.mouse_scroll_y_accel += self.weights.accel_accel * 0.32;
+                        self.mouse_scroll_y += precise_y.signum()
+                            * scroll_func((precise_y * self.weights.accel).abs())
+                    }
+                    //self.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
+                }
+                Event::MouseMotion { x, y, .. } => {
+                    self.mouse_x = x;
+                    self.mouse_y = y;
+                }
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    keymod,
+                    ..
+                } => {
+                    self.keyset.insert(keycode);
+                    self.keymod = keymod;
+                }
+                Event::KeyUp {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    self.keyset_up.insert(keycode);
+                }
+                Event::Window {
+                    win_event: sdl2::event::WindowEvent::Resized(_, _),
+                    ..
+                } => {
+                    self.state_flag |= 32;
+                    self.mouse_x = 0;
+                    self.mouse_y = 0;
+                }
+                Event::TextInput { text, .. } => {
+                    self.text = text;
+                }
+                _ => {}
+            }
+            return Some(true)
+        }
+
+        Some(false)
+    }
+
     fn scroll_update_id(&mut self) {
-        if self.mouse_moved {
+        if self.mouse_moved() {
             let mouse_point = self.mouse_point();
             for id in self.id_scroll_map.iter().rev() {
                 let region = self.rect_id(*id);
@@ -713,7 +825,7 @@ impl<'a> Context<'a, '_> {
     }
 
     fn mouse_update_id(&mut self) {
-        if self.mouse_moved {
+        if self.mouse_moved() {
             let mouse_point = self.mouse_point();
             self.reset_id();
             for (region, select) in self.id_map.iter_mut().rev() {
@@ -744,23 +856,23 @@ impl<'a> Context<'a, '_> {
     }
 
     fn register_click(&mut self, id: usize) {
-        if self.mouse_left_down && self.state_id(id) && self.click_id.is_none() {
+        if self.mouse_left_down() && self.state_id(id) && self.click_id.is_none() {
             self.click_id = Some(id);
         }
     }
 
     fn register_click_right(&mut self, id: usize) {
-        if self.mouse_right_down && self.state_id(id) && self.click_id.is_none() {
+        if self.mouse_right_down() && self.state_id(id) && self.click_id.is_none() {
             self.click_id_right = Some(id);
         }
     }
 
     fn check_click(&self, id: usize) -> bool {
-        self.click_id == Some(id) && self.state_id(id) && self.mouse_left_up
+        self.click_id == Some(id) && self.state_id(id) && self.mouse_left_up()
     }
 
     fn check_click_right(&self, id: usize) -> bool {
-        self.click_id_right == Some(id) && self.state_id(id) && self.mouse_right_up
+        self.click_id_right == Some(id) && self.state_id(id) && self.mouse_right_up()
     }
 
     fn check_return(&self, id: usize) -> bool {
@@ -794,7 +906,7 @@ impl<'a> Context<'a, '_> {
         for (_, selected) in self.id_map.iter_mut() {
             *selected = false;
         }
-        self.id_updated = false;
+        self.state_flag &= !64;
     }
 
     fn window_rect(&self) -> Rect {
@@ -914,6 +1026,8 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
+
     let mut app = App::new(
         canvas,
         clipboard,
@@ -922,6 +1036,7 @@ async fn main() -> anyhow::Result<()> {
         &ttf_ctx,
         &texture_creator,
         thumbnail_path.to_string(),
+        event_pump
     );
 
     if let Some(cred) = app.database.anilist_cred() {
@@ -939,7 +1054,6 @@ async fn main() -> anyhow::Result<()> {
 
     app.context.canvas.clear();
     app.context.canvas.present();
-    let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
         // TODO: Id needs to get reset even when the window is not in focus
         if true
@@ -949,80 +1063,12 @@ async fn main() -> anyhow::Result<()> {
             app.reset_frame_state()
         }
 
-        for event in event_pump.poll_iter() {
-            canvas_texture = CanvasTexture::Wait(IDLE_TIME);
-            app.context.mouse_moved = event.is_mouse();
-
-            match event {
-                Event::Quit { .. } => break 'running,
-                Event::MouseButtonDown {
-                    mouse_btn: MouseButton::Left,
-                    ..
-                } => {
-                    app.context.mouse_left_down = true;
-                }
-                Event::MouseButtonDown {
-                    mouse_btn: MouseButton::Right,
-                    ..
-                } => {
-                    app.context.mouse_right_down = true;
-                }
-
-                Event::MouseButtonUp {
-                    mouse_btn: MouseButton::Left,
-                    ..
-                } => {
-                    app.context.mouse_left_up = true;
-                }
-                Event::MouseButtonUp {
-                    mouse_btn: MouseButton::Right,
-                    ..
-                } => {
-                    app.context.mouse_right_up = true;
-                }
-                Event::MouseWheel {
-                    precise_x,
-                    precise_y,
-                    ..
-                } => {
-                    if app.context.mouse_scroll_y.abs() <= 80.0 {
-                        app.context.mouse_scroll_y_accel += app.context.weights.accel_accel * 0.32;
-                        app.context.mouse_scroll_y += precise_y.signum()
-                            * scroll_func((precise_y * app.context.weights.accel).abs())
-                    }
-                    app.context.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
-                }
-                Event::MouseMotion { x, y, .. } => {
-                    app.context.mouse_x = x;
-                    app.context.mouse_y = y;
-                }
-                Event::KeyDown {
-                    keycode: Some(keycode),
-                    keymod,
-                    ..
-                } => {
-                    app.context.keyset.insert(keycode);
-                    app.context.keymod = keymod;
-                }
-                Event::KeyUp {
-                    keycode: Some(keycode),
-                    ..
-                } => {
-                    app.context.keyset_up.insert(keycode);
-                }
-                Event::Window {
-                    win_event: sdl2::event::WindowEvent::Resized(_, _),
-                    ..
-                } => {
-                    app.context.resized = true;
-                    app.context.mouse_x = 0;
-                    app.context.mouse_y = 0;
-                }
-                Event::TextInput { text, .. } => {
-                    app.context.text = text;
-                }
-                _ => {}
+        match app.context.poll_event() {
+            Some(true) => {
+                canvas_texture = CanvasTexture::Wait(IDLE_TIME);
             }
+            None => break 'running,
+            _ => (),
         }
 
         match canvas_texture {
