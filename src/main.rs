@@ -154,6 +154,13 @@ struct Textbox {
     cursor_location: usize,
     view_offset: i32,
 }
+
+#[derive(Debug, Clone, Default)]
+struct Switch {
+    id: usize,
+    toggled: bool,
+}
+
 impl Scroll {
     pub fn new() -> Self {
         Self {
@@ -606,6 +613,56 @@ impl<'a, 'b> App<'a, 'b> {
         }
 
         false
+    }
+
+    fn switch(&mut self, switch_state: &mut Switch, label: &str, region: &mut Rect) -> bool {
+        const SIDE_PAD: i32 = 34;
+        let height = self.text_manager.font_height(INPUT_BOX_FONT_INFO);
+        let (switch_region, new_region) = region.split_hori(height as u32 + 12, region.height());
+        *region = new_region;
+        let switch_size = 70;
+        let (label_region, switchable_region) =
+            switch_region.split_vert(switch_region.width() - switch_size, switch_region.width());
+        let switchable_region = switchable_region
+            .left_shifted(SIDE_PAD)
+            .pad_top(8)
+            .pad_bottom(16);
+        switch_state.id = self.create_id(switchable_region);
+
+        let label_region = label_region.pad_left(SIDE_PAD);
+
+        let label_texture = self
+            .text_manager
+            .load(label, INPUT_BOX_FONT_INFO, color_hex(0xB0B0B0), None);
+        let TextureQuery { width, height, .. } = label_texture.query();
+        let label_center = label_region.center();
+        let label_rect = rect!(
+            label_region.x,
+            label_center.y() - height as i32 / 2,
+            width,
+            height
+        );
+        self.canvas.copy(&label_texture, None, label_rect).unwrap();
+
+        if self.click_elem(switch_state.id) {
+            switch_state.toggled = !switch_state.toggled;
+        }
+
+        if switch_state.toggled {
+            let (_slider, head) = switchable_region
+                .split_vert(switchable_region.width() - 25, switchable_region.width());
+            self.canvas.set_draw_color(color_hex(0x6B549C));
+            self.canvas.fill_rect(switchable_region).unwrap();
+            self.canvas.set_draw_color(color_hex(0x304A6C));
+            self.canvas.fill_rect(head).unwrap();
+        } else {
+            let (head, _slider) = switchable_region.split_vert(25, switchable_region.width());
+            self.canvas.set_draw_color(color_hex(0x707070));
+            self.canvas.fill_rect(switchable_region).unwrap();
+            self.canvas.set_draw_color(color_hex(0xB0B0B0));
+            self.canvas.fill_rect(head).unwrap();
+        }
+        switch_state.toggled
     }
 
     fn scroll_update_id(&mut self) {
