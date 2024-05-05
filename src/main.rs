@@ -98,7 +98,6 @@ pub enum ConnectionOverlayState {
     Disconnected,
 }
 
-#[derive(Debug)]
 #[derive(Debug, Default)]
 pub struct EpisodeState {
     episode_scroll: Scroll,
