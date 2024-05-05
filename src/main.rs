@@ -70,7 +70,7 @@ impl StringManager {
         Self { map: vec![] }
     }
 
-    pub fn load(&mut self, ptr: *const u8, format: Format, f: impl FnOnce() -> String) -> &str {
+    pub fn load<'a, 'b>(&'a mut self, ptr: *const u8, format: Format, f: impl FnOnce() -> String) -> &'b str {
         match self
             .map
             .iter()
@@ -170,33 +170,15 @@ impl Scroll {
     }
 }
 
-pub struct App<'a, 'b> {
+pub struct Context<'a, 'b> {
     pub canvas: Canvas<Window>,
     pub clipboard: ClipboardUtil,
-    pub next_screen: Option<Screen>,
-    screen: Screen,
     pub input_util: TextInputUtil,
+
     pub text_manager: TextManager<'a, 'b>,
     pub image_manager: TextureManager<'a>,
     pub string_manager: StringManager,
-    pub thumbnail_path: String,
-    pub database: Database<'a>,
-    pub running: bool,
-    pub show_toolbar: bool,
-    pub frametime: std::time::Duration,
 
-    pub http_rx: mpsc::Receiver<anyhow::Result<HttpData>>,
-    pub http_tx: HttpSender,
-
-    pub connection_overlay: ConnectionOverlay,
-    pub login_progress: LoginProgress,
-
-    pub main_state: MainState,
-    pub episode_state: EpisodeState,
-    pub login_state: LoginState,
-
-    pub alias_popup_state: AliasPopupState,
-    pub title_popup_state: TitlePopupState,
     // bitfield for:
     //   mouse_moved
     //   mouse_clicked_left
@@ -232,8 +214,220 @@ pub struct App<'a, 'b> {
     pub keymod: keyboard::Mod,
 }
 
-pub fn get_scroll<'a, 'b>(scroll: &'a mut Scroll) -> &'b mut Scroll {
-    unsafe { &mut *((scroll) as *mut _) }
+pub struct App<'a, 'b> {
+    pub context: Context<'a, 'b>,
+    pub next_screen: Option<Screen>,
+    screen: Screen,
+
+    pub thumbnail_path: String,
+    pub database: Database<'a>,
+    pub running: bool,
+    pub show_toolbar: bool,
+    pub frametime: std::time::Duration,
+
+    pub http_rx: mpsc::Receiver<anyhow::Result<HttpData>>,
+    pub http_tx: HttpSender,
+
+    pub connection_overlay: ConnectionOverlay,
+    pub login_progress: LoginProgress,
+
+    pub main_state: MainState,
+    pub episode_state: EpisodeState,
+    pub login_state: LoginState,
+
+    pub alias_popup_state: AliasPopupState,
+    pub title_popup_state: TitlePopupState,
+}
+
+fn textbox(
+    context: &mut Context,
+    textbox_state: &mut Textbox,
+    enabled: bool,
+    sidepad: i32,
+    region: &mut Rect,
+) -> bool {
+    context.input_util.start();
+    let font_info = INPUT_BOX_FONT_INFO;
+    let height = context.text_manager.font_height(font_info);
+    let (text_border_region, new_region) = region.split_hori(height + 12, region.height());
+    let text_border_region = text_border_region.pad_left(sidepad).pad_right(sidepad);
+    let text_region = Rect::from_center(
+        text_border_region.center(),
+        text_border_region.width() - 10,
+        height,
+    );
+
+    *region = new_region.pad_top(6);
+    textbox_state.id = context.create_id(text_border_region);
+    if context.click_elem(textbox_state.id) {
+        context.textbox_id = Some(textbox_state.id);
+        context.text.clear();
+    } else if false && context.mouse_left_up && context.click_id != Some(textbox_state.id) {
+        // TODO: This breaks selecting textboxes with multiple textboxes.
+        //
+        // Because the click id for the next thing is not the same, it sets textbox_id
+        // even though the previous textbox was clicked
+        context.textbox_id = None;
+    }
+
+    context.canvas.set_draw_color(color_hex(0x909090));
+    context.canvas.draw_rect(text_border_region).unwrap();
+
+    let mut cursor_offset = 0;
+    let text_color = color_hex(0xB0B0B0);
+    if !textbox_state.text.is_empty() {
+        let font_texture =
+            context
+                .text_manager
+                .load(&textbox_state.text, font_info, text_color, None);
+        let TextureQuery { width, height, .. } = font_texture.query();
+        cursor_offset = context
+            .text_manager
+            .text_size(
+                font_info,
+                &textbox_state.text[0..textbox_state.cursor_location],
+            )
+            .0 as i32;
+        if cursor_offset < -textbox_state.view_offset {
+            textbox_state.view_offset += -textbox_state.view_offset - cursor_offset;
+        } else if cursor_offset > -textbox_state.view_offset + text_region.width() as i32 {
+            textbox_state.view_offset -=
+                cursor_offset + textbox_state.view_offset - text_region.width() as i32;
+        }
+        let text_rect = rect!(
+            text_region.x + textbox_state.view_offset,
+            text_region.y,
+            width,
+            height
+        );
+        context.canvas.set_clip_rect(text_region);
+        context.canvas.copy(&font_texture, None, text_rect).unwrap();
+        context.canvas.set_clip_rect(None);
+    }
+    fn is_skip_char(c: char) -> bool {
+        !c.is_ascii_alphanumeric()
+    }
+
+    if !enabled {
+        context.canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+        context.canvas
+            .set_draw_color(Color::RGBA(0x10, 0x10, 0x10, 0xA0));
+        context.canvas.fill_rect(text_border_region).unwrap();
+    } else if context.textbox_id == Some(textbox_state.id) {
+        use Keycode::*;
+        let key = |k| context.keyset.contains(k);
+        let kmod = |m| context.keymod.contains(m);
+        let cursor_rect = rect!(
+            text_region.x + textbox_state.view_offset + cursor_offset,
+            text_region.y,
+            1,
+            height
+        );
+
+        context.canvas.set_draw_color(text_color);
+        context.canvas.fill_rect(cursor_rect).unwrap();
+        if !kmod(Mod::LCTRLMOD) && !kmod(Mod::LALTMOD) {
+            for c in context.text.drain(..) {
+                textbox_state.text.insert(textbox_state.cursor_location, c);
+                textbox_state.cursor_location += 1;
+            }
+        }
+        if kmod(Mod::LCTRLMOD) && key(&Z) {
+            // TODO
+        } else if (kmod(Mod::LCTRLMOD) && key(&Left)) || (kmod(Mod::LALTMOD) && key(&B)) {
+            let bytes = textbox_state.text.as_bytes();
+            if textbox_state.cursor_location > 0 {
+                while textbox_state.cursor_location > 0
+                    && is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                {
+                    textbox_state.cursor_location -= 1;
+                }
+
+                while textbox_state.cursor_location > 0
+                    && !is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                {
+                    textbox_state.cursor_location -= 1;
+                }
+            }
+        } else if kmod(Mod::LCTRLMOD) && key(&Right) || (kmod(Mod::LALTMOD) && key(&F)) {
+            let bytes = textbox_state.text.as_bytes();
+            let len = textbox_state.text.len();
+            while textbox_state.cursor_location < len
+                && is_skip_char(bytes[textbox_state.cursor_location] as char)
+            {
+                textbox_state.cursor_location += 1;
+            }
+
+            while textbox_state.cursor_location < len
+                && !is_skip_char(bytes[textbox_state.cursor_location] as char)
+            {
+                textbox_state.cursor_location += 1;
+            }
+
+            while textbox_state.cursor_location < len
+                && !(bytes[textbox_state.cursor_location] as char).is_whitespace()
+                && !(bytes[textbox_state.cursor_location] as char).is_ascii_alphanumeric()
+            {
+                textbox_state.cursor_location += 1;
+            }
+        } else if kmod(Mod::LCTRLMOD) && (key(&Backspace) || key(&W)) {
+            let bytes = textbox_state.text.as_bytes();
+            if textbox_state.cursor_location > 0 {
+                let end = textbox_state.cursor_location;
+                while textbox_state.cursor_location > 0
+                    && is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                {
+                    textbox_state.cursor_location -= 1;
+                }
+
+                while textbox_state.cursor_location > 0
+                    && !is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
+                {
+                    textbox_state.cursor_location -= 1;
+                }
+                let end_range = end - textbox_state.cursor_location;
+                let (lhs, rhs) = textbox_state.text.split_at(textbox_state.cursor_location);
+                let mut new_text = lhs.to_string();
+                new_text.push_str(&rhs[end_range..]);
+                textbox_state.text = new_text;
+            }
+        } else if key(&End) || (kmod(Mod::LCTRLMOD) && key(&E)) {
+            textbox_state.cursor_location = textbox_state.text.len();
+        } else if key(&Home) || (kmod(Mod::LCTRLMOD) && key(&A)) {
+            textbox_state.cursor_location = 0;
+        } else if key(&Backspace) {
+            if textbox_state.cursor_location > 0 {
+                textbox_state.text.remove(textbox_state.cursor_location - 1);
+                textbox_state.cursor_location -= 1;
+            }
+        } else if kmod(Mod::LCTRLMOD) && key(&U) {
+            let (_, new_text) = textbox_state.text.split_at(textbox_state.cursor_location);
+            textbox_state.text = new_text.to_string();
+            textbox_state.cursor_location = 0;
+        } else if key(&Left) || (kmod(Mod::LCTRLMOD) && key(&B)) {
+            if textbox_state.cursor_location > 0 {
+                textbox_state.cursor_location -= 1;
+            }
+        } else if key(&Right) || (kmod(Mod::LCTRLMOD) && key(&F)) {
+            if textbox_state.cursor_location < textbox_state.text.len() {
+                textbox_state.cursor_location += 1;
+            }
+        } else if kmod(Mod::LCTRLMOD) && key(&V) {
+            match context.clipboard.clipboard_text() {
+                Ok(s) => {
+                    textbox_state.text.push_str(&s);
+                    textbox_state.cursor_location += s.len();
+                }
+                Err(e) => {
+                    dbg!(e);
+                }
+            };
+        }
+
+        return key(&Return);
+    }
+
+    false
 }
 
 impl<'a, 'b> App<'a, 'b> {
@@ -249,15 +443,51 @@ impl<'a, 'b> App<'a, 'b> {
         let (http_tx, http_rx) = mpsc::channel();
 
         Self {
-            canvas,
-            clipboard,
+            context: Context {
+                canvas,
+                clipboard,
+                input_util,
+                text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
+                image_manager: TextureManager::new(texture_creator),
+                string_manager: StringManager::new(),
+                mouse_left_up: false,
+                mouse_left_down: false,
+                mouse_right_up: false,
+                mouse_right_down: false,
+                mouse_moved: false,
+
+                weights: ScrollWeights {
+                    accel: 10.990031,
+                    accel_accel: 1.9800003,
+                    decel_decel: 3.119999,
+                    decel: 1.3700006,
+                },
+
+                resized: false,
+
+                mouse_x: 0,
+                mouse_y: 0,
+                mouse_scroll_x: 0.0,
+                mouse_scroll_y: 0.0,
+                mouse_scroll_y_accel: 0.0,
+
+                id: 0,
+                id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
+                id_updated: false,
+                id_scroll_map: vec![],
+                scroll_id: None,
+                click_id: None,
+                click_id_right: None,
+                textbox_id: None,
+
+                text: String::new(),
+                keyset: HashSet::new(),
+                keyset_up: HashSet::new(),
+                keymod: keyboard::Mod::NOMOD,
+            },
             database,
-            input_util,
             next_screen: None,
             screen: Screen::Main,
-            text_manager: TextManager::new(texture_creator, FontManager::new(ttf_ctx)),
-            image_manager: TextureManager::new(texture_creator),
-            string_manager: StringManager::new(),
             frametime: std::time::Duration::default(),
 
             running: true,
@@ -281,40 +511,6 @@ impl<'a, 'b> App<'a, 'b> {
             title_popup_state: TitlePopupState::default(),
 
             //state_flag: 0,
-            mouse_left_up: false,
-            mouse_left_down: false,
-            mouse_right_up: false,
-            mouse_right_down: false,
-            mouse_moved: false,
-
-            weights: ScrollWeights {
-                accel: 10.990031,
-                accel_accel: 1.9800003,
-                decel_decel: 3.119999,
-                decel: 1.3700006,
-            },
-
-            resized: false,
-
-            mouse_x: 0,
-            mouse_y: 0,
-            mouse_scroll_x: 0.0,
-            mouse_scroll_y: 0.0,
-            mouse_scroll_y_accel: 0.0,
-
-            id: 0,
-            id_map: vec![(Rect::new(0, 0, 0, 0), false); 16],
-            id_updated: false,
-            id_scroll_map: vec![],
-            scroll_id: None,
-            click_id: None,
-            click_id_right: None,
-            textbox_id: None,
-
-            text: String::new(),
-            keyset: HashSet::new(),
-            keyset_up: HashSet::new(),
-            keymod: keyboard::Mod::NOMOD,
         }
     }
 
@@ -324,15 +520,15 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     pub fn mouse_points(&self) -> (i32, i32) {
-        (self.mouse_x, self.mouse_y)
+        (self.context.mouse_x, self.context.mouse_y)
     }
 
     pub fn keydown(&self, keycode: Keycode) -> bool {
-        self.keyset.contains(&keycode)
+        self.context.keyset.contains(&keycode)
     }
 
     pub fn keyup(&self, keycode: Keycode) -> bool {
-        self.keyset_up.contains(&keycode)
+        self.context.keyset_up.contains(&keycode)
     }
 
     pub fn frametime_frac(&self) -> f32 {
@@ -343,327 +539,135 @@ impl<'a, 'b> App<'a, 'b> {
     }
 
     pub fn reset_frame_state(&mut self) {
-        self.mouse_scroll_y_accel =
-            self.mouse_scroll_y_accel * self.frametime_frac() / self.weights.decel_decel;
-        self.mouse_scroll_y =
-            self.mouse_scroll_y * self.mouse_scroll_y_accel * 0.1 / self.weights.decel;
+        self.context.mouse_scroll_y_accel =
+            self.context.mouse_scroll_y_accel * self.frametime_frac() / self.context.weights.decel_decel;
+        self.context.mouse_scroll_y =
+            self.context.mouse_scroll_y * self.context.mouse_scroll_y_accel * 0.1 / self.context.weights.decel;
 
-        if self.mouse_left_up {
-            self.mouse_left_down = false;
-            self.mouse_left_up = false;
-            self.click_id = None;
+        if self.context.mouse_left_up {
+            self.context.mouse_left_down = false;
+            self.context.mouse_left_up = false;
+            self.context.click_id = None;
         }
 
-        if self.mouse_right_up {
-            self.mouse_right_down = false;
-            self.mouse_right_up = false;
-            self.click_id = None;
+        if self.context.mouse_right_up {
+            self.context.mouse_right_down = false;
+            self.context.mouse_right_up = false;
+            self.context.click_id = None;
         }
 
-        self.mouse_update_id();
-        self.scroll_update_id();
-        self.id = 0;
+        self.context.mouse_update_id();
+        self.context.scroll_update_id();
+        self.context.id = 0;
 
-        self.keyset.clear();
-        self.keyset_up.clear();
+        self.context.keyset.clear();
+        self.context.keyset_up.clear();
 
-        self.mouse_moved = false;
-        self.resized = false;
+        self.context.mouse_moved = false;
+        self.context.resized = false;
     }
 
     fn swap_screen(&mut self) {
         if let Some(next_screen) = self.next_screen.take() {
             self.screen = next_screen;
-            self.id_map.resize(0, (Rect::new(0, 0, 0, 0), false));
+            self.context.id_map.resize(0, (Rect::new(0, 0, 0, 0), false));
         }
     }
+}
 
-    fn select_id(&mut self, id: usize) {
-        self.id_map[id].1 = true;
+fn switch(context: &mut Context, switch_state: &mut Switch, label: &str, region: &mut Rect) -> bool {
+    const SIDE_PAD: i32 = 34;
+    let height = context.text_manager.font_height(INPUT_BOX_FONT_INFO);
+    let (switch_region, new_region) = region.split_hori(height as u32 + 12, region.height());
+    *region = new_region;
+    let switch_size = 70;
+    let (label_region, switchable_region) =
+        switch_region.split_vert(switch_region.width() - switch_size, switch_region.width());
+    let switchable_region = switchable_region
+        .left_shifted(SIDE_PAD)
+        .pad_top(8)
+        .pad_bottom(16);
+    switch_state.id = context.create_id(switchable_region);
+
+    let label_region = label_region.pad_left(SIDE_PAD);
+
+    let label_texture = context
+        .text_manager
+        .load(label, INPUT_BOX_FONT_INFO, color_hex(0xB0B0B0), None);
+    let TextureQuery { width, height, .. } = label_texture.query();
+    let label_center = label_region.center();
+    let label_rect = rect!(
+        label_region.x,
+        label_center.y() - height as i32 / 2,
+        width,
+        height
+    );
+    context.canvas.copy(&label_texture, None, label_rect).unwrap();
+
+    if context.click_elem(switch_state.id) {
+        switch_state.toggled = !switch_state.toggled;
     }
 
-    /// Registers area to be scrollable and draws scrollbar
-    fn register_scroll(&mut self, scroll: &mut Scroll, region: &mut Rect) {
-        scroll.id = self.create_id(*region);
-        self.id_scroll_map.push(scroll.id);
-
-        if scroll.max_scroll as u32 >= region.height() {
-            const PAD_TOP: u32 = 0;
-            let (new_region, scroll_layout) = region.split_vert(796, 800);
-            let bar_height =
-                scroll_layout.height() * scroll_layout.height() / scroll.max_scroll as u32;
-            let bar_scroll = scroll.scroll * scroll_layout.height() as i32 / scroll.max_scroll;
-            let bar_rect = rect!(
-                scroll_layout.x(),
-                scroll_layout.y() - bar_scroll + PAD_TOP as i32 / 2,
-                scroll_layout.width(),
-                bar_height - PAD_TOP
-            );
-            self.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
-            self.canvas.fill_rect(bar_rect).unwrap();
-            *region = new_region;
-        }
-
-        if self.scroll_id == Some(scroll.id) {
-            if self.keyset.contains(&Keycode::J)
-                && scroll.scroll - region.height() as i32 >= -scroll.max_scroll
-            {
-                scroll.scroll -= 6;
-            }
-
-            if self.keyset.contains(&Keycode::K) && scroll.scroll <= 0 {
-                scroll.scroll += 6;
-            }
-
-            scroll.scroll += self.mouse_scroll_y as i32;
-        }
-
-        scroll.scroll = scroll
-            .scroll
-            .max(-scroll.max_scroll + region.height() as i32);
-        scroll.scroll = scroll.scroll.min(0);
+    if switch_state.toggled {
+        let (_slider, head) = switchable_region
+            .split_vert(switchable_region.width() - 25, switchable_region.width());
+        context.canvas.set_draw_color(color_hex(0x6B549C));
+        context.canvas.fill_rect(switchable_region).unwrap();
+        context.canvas.set_draw_color(color_hex(0x304A6C));
+        context.canvas.fill_rect(head).unwrap();
+    } else {
+        let (head, _slider) = switchable_region.split_vert(25, switchable_region.width());
+        context.canvas.set_draw_color(color_hex(0x707070));
+        context.canvas.fill_rect(switchable_region).unwrap();
+        context.canvas.set_draw_color(color_hex(0xB0B0B0));
+        context.canvas.fill_rect(head).unwrap();
     }
+    switch_state.toggled
+}
 
-    fn textbox(
-        &mut self,
-        textbox_state: &mut Textbox,
-        enabled: bool,
-        sidepad: i32,
-        region: &mut Rect,
-    ) -> bool {
-        self.input_util.start();
-        let font_info = INPUT_BOX_FONT_INFO;
-        let height = self.text_manager.font_height(font_info);
-        let (text_border_region, new_region) = region.split_hori(height + 12, region.height());
-        let text_border_region = text_border_region.pad_left(sidepad).pad_right(sidepad);
-        let text_region = Rect::from_center(
-            text_border_region.center(),
-            text_border_region.width() - 10,
-            height,
+/// Registers area to be scrollable and draws scrollbar
+fn register_scroll(context: &mut Context, scroll: &mut Scroll, region: &mut Rect) {
+    scroll.id = context.create_id(*region);
+    context.id_scroll_map.push(scroll.id);
+
+    if scroll.max_scroll as u32 >= region.height() {
+        const PAD_TOP: u32 = 0;
+        let (new_region, scroll_layout) = region.split_vert(796, 800);
+        let bar_height =
+            scroll_layout.height() * scroll_layout.height() / scroll.max_scroll as u32;
+        let bar_scroll = scroll.scroll * scroll_layout.height() as i32 / scroll.max_scroll;
+        let bar_rect = rect!(
+            scroll_layout.x(),
+            scroll_layout.y() - bar_scroll + PAD_TOP as i32 / 2,
+            scroll_layout.width(),
+            bar_height - PAD_TOP
         );
-
-        *region = new_region.pad_top(6);
-        textbox_state.id = self.create_id(text_border_region);
-        if self.click_elem(textbox_state.id) {
-            self.textbox_id = Some(textbox_state.id);
-            self.text.clear();
-        } else if false && self.mouse_left_up && self.click_id != Some(textbox_state.id) {
-            // TODO: This breaks selecting textboxes with multiple textboxes.
-            //
-            // Because the click id for the next thing is not the same, it sets textbox_id
-            // even though the previous textbox was clicked
-            self.textbox_id = None;
-        }
-
-        self.canvas.set_draw_color(color_hex(0x909090));
-        self.canvas.draw_rect(text_border_region).unwrap();
-
-        let mut cursor_offset = 0;
-        let text_color = color_hex(0xB0B0B0);
-        if !textbox_state.text.is_empty() {
-            let font_texture =
-                self.text_manager
-                    .load(&textbox_state.text, font_info, text_color, None);
-            let TextureQuery { width, height, .. } = font_texture.query();
-            cursor_offset = self
-                .text_manager
-                .text_size(
-                    font_info,
-                    &textbox_state.text[0..textbox_state.cursor_location],
-                )
-                .0 as i32;
-            if cursor_offset < -textbox_state.view_offset {
-                textbox_state.view_offset += -textbox_state.view_offset - cursor_offset;
-            } else if cursor_offset > -textbox_state.view_offset + text_region.width() as i32 {
-                textbox_state.view_offset -=
-                    cursor_offset + textbox_state.view_offset - text_region.width() as i32;
-            }
-            let text_rect = rect!(
-                text_region.x + textbox_state.view_offset,
-                text_region.y,
-                width,
-                height
-            );
-            self.canvas.set_clip_rect(text_region);
-            self.canvas.copy(&font_texture, None, text_rect).unwrap();
-            self.canvas.set_clip_rect(None);
-        }
-        fn is_skip_char(c: char) -> bool {
-            !c.is_ascii_alphanumeric()
-        }
-
-        if !enabled {
-            self.canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
-            self.canvas
-                .set_draw_color(Color::RGBA(0x10, 0x10, 0x10, 0xA0));
-            self.canvas.fill_rect(text_border_region).unwrap();
-        } else if self.textbox_id == Some(textbox_state.id) {
-            use Keycode::*;
-            let key = |k| self.keyset.contains(k);
-            let kmod = |m| self.keymod.contains(m);
-            let cursor_rect = rect!(
-                text_region.x + textbox_state.view_offset + cursor_offset,
-                text_region.y,
-                1,
-                height
-            );
-
-            self.canvas.set_draw_color(text_color);
-            self.canvas.fill_rect(cursor_rect).unwrap();
-            if !kmod(Mod::LCTRLMOD) && !kmod(Mod::LALTMOD) {
-                for c in self.text.drain(..) {
-                    textbox_state.text.insert(textbox_state.cursor_location, c);
-                    textbox_state.cursor_location += 1;
-                }
-            }
-            if kmod(Mod::LCTRLMOD) && key(&Z) {
-                // TODO
-            } else if (kmod(Mod::LCTRLMOD) && key(&Left)) || (kmod(Mod::LALTMOD) && key(&B)) {
-                let bytes = textbox_state.text.as_bytes();
-                if textbox_state.cursor_location > 0 {
-                    while textbox_state.cursor_location > 0
-                        && is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
-                    {
-                        textbox_state.cursor_location -= 1;
-                    }
-
-                    while textbox_state.cursor_location > 0
-                        && !is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
-                    {
-                        textbox_state.cursor_location -= 1;
-                    }
-                }
-            } else if kmod(Mod::LCTRLMOD) && key(&Right) || (kmod(Mod::LALTMOD) && key(&F)) {
-                let bytes = textbox_state.text.as_bytes();
-                let len = textbox_state.text.len();
-                while textbox_state.cursor_location < len
-                    && is_skip_char(bytes[textbox_state.cursor_location] as char)
-                {
-                    textbox_state.cursor_location += 1;
-                }
-
-                while textbox_state.cursor_location < len
-                    && !is_skip_char(bytes[textbox_state.cursor_location] as char)
-                {
-                    textbox_state.cursor_location += 1;
-                }
-
-                while textbox_state.cursor_location < len
-                    && !(bytes[textbox_state.cursor_location] as char).is_whitespace()
-                    && !(bytes[textbox_state.cursor_location] as char).is_ascii_alphanumeric()
-                {
-                    textbox_state.cursor_location += 1;
-                }
-            } else if kmod(Mod::LCTRLMOD) && (key(&Backspace) || key(&W)) {
-                let bytes = textbox_state.text.as_bytes();
-                if textbox_state.cursor_location > 0 {
-                    let end = textbox_state.cursor_location;
-                    while textbox_state.cursor_location > 0
-                        && is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
-                    {
-                        textbox_state.cursor_location -= 1;
-                    }
-
-                    while textbox_state.cursor_location > 0
-                        && !is_skip_char(bytes[textbox_state.cursor_location - 1] as char)
-                    {
-                        textbox_state.cursor_location -= 1;
-                    }
-                    let end_range = end - textbox_state.cursor_location;
-                    let (lhs, rhs) = textbox_state.text.split_at(textbox_state.cursor_location);
-                    let mut new_text = lhs.to_string();
-                    new_text.push_str(&rhs[end_range..]);
-                    textbox_state.text = new_text;
-                }
-            } else if key(&End) || (kmod(Mod::LCTRLMOD) && key(&E)) {
-                textbox_state.cursor_location = textbox_state.text.len();
-            } else if key(&Home) || (kmod(Mod::LCTRLMOD) && key(&A)) {
-                textbox_state.cursor_location = 0;
-            } else if key(&Backspace) {
-                if textbox_state.cursor_location > 0 {
-                    textbox_state.text.remove(textbox_state.cursor_location - 1);
-                    textbox_state.cursor_location -= 1;
-                }
-            } else if kmod(Mod::LCTRLMOD) && key(&U) {
-                let (_, new_text) = textbox_state.text.split_at(textbox_state.cursor_location);
-                textbox_state.text = new_text.to_string();
-                textbox_state.cursor_location = 0;
-            } else if key(&Left) || (kmod(Mod::LCTRLMOD) && key(&B)) {
-                if textbox_state.cursor_location > 0 {
-                    textbox_state.cursor_location -= 1;
-                }
-            } else if key(&Right) || (kmod(Mod::LCTRLMOD) && key(&F)) {
-                if textbox_state.cursor_location < textbox_state.text.len() {
-                    textbox_state.cursor_location += 1;
-                }
-            } else if kmod(Mod::LCTRLMOD) && key(&V) {
-                match self.clipboard.clipboard_text() {
-                    Ok(s) => {
-                        textbox_state.text.push_str(&s);
-                        textbox_state.cursor_location += s.len();
-                    }
-                    Err(e) => {
-                        dbg!(e);
-                    }
-                };
-            }
-
-            return key(&Return);
-        }
-
-        false
-    }
-
-    fn switch(&mut self, switch_state: &mut Switch, label: &str, region: &mut Rect) -> bool {
-        const SIDE_PAD: i32 = 34;
-        let height = self.text_manager.font_height(INPUT_BOX_FONT_INFO);
-        let (switch_region, new_region) = region.split_hori(height as u32 + 12, region.height());
+        context.canvas.set_draw_color(color_hex(SCROLLBAR_COLOR));
+        context.canvas.fill_rect(bar_rect).unwrap();
         *region = new_region;
-        let switch_size = 70;
-        let (label_region, switchable_region) =
-            switch_region.split_vert(switch_region.width() - switch_size, switch_region.width());
-        let switchable_region = switchable_region
-            .left_shifted(SIDE_PAD)
-            .pad_top(8)
-            .pad_bottom(16);
-        switch_state.id = self.create_id(switchable_region);
-
-        let label_region = label_region.pad_left(SIDE_PAD);
-
-        let label_texture = self
-            .text_manager
-            .load(label, INPUT_BOX_FONT_INFO, color_hex(0xB0B0B0), None);
-        let TextureQuery { width, height, .. } = label_texture.query();
-        let label_center = label_region.center();
-        let label_rect = rect!(
-            label_region.x,
-            label_center.y() - height as i32 / 2,
-            width,
-            height
-        );
-        self.canvas.copy(&label_texture, None, label_rect).unwrap();
-
-        if self.click_elem(switch_state.id) {
-            switch_state.toggled = !switch_state.toggled;
-        }
-
-        if switch_state.toggled {
-            let (_slider, head) = switchable_region
-                .split_vert(switchable_region.width() - 25, switchable_region.width());
-            self.canvas.set_draw_color(color_hex(0x6B549C));
-            self.canvas.fill_rect(switchable_region).unwrap();
-            self.canvas.set_draw_color(color_hex(0x304A6C));
-            self.canvas.fill_rect(head).unwrap();
-        } else {
-            let (head, _slider) = switchable_region.split_vert(25, switchable_region.width());
-            self.canvas.set_draw_color(color_hex(0x707070));
-            self.canvas.fill_rect(switchable_region).unwrap();
-            self.canvas.set_draw_color(color_hex(0xB0B0B0));
-            self.canvas.fill_rect(head).unwrap();
-        }
-        switch_state.toggled
     }
 
+    if context.scroll_id == Some(scroll.id) {
+        if context.keyset.contains(&Keycode::J)
+            && scroll.scroll - region.height() as i32 >= -scroll.max_scroll
+        {
+            scroll.scroll -= 6;
+        }
+
+        if context.keyset.contains(&Keycode::K) && scroll.scroll <= 0 {
+            scroll.scroll += 6;
+        }
+
+        scroll.scroll += context.mouse_scroll_y as i32;
+    }
+
+    scroll.scroll = scroll
+        .scroll
+        .max(-scroll.max_scroll + region.height() as i32);
+    scroll.scroll = scroll.scroll.min(0);
+}
+
+impl Context<'_, '_> {
     fn scroll_update_id(&mut self) {
         if self.mouse_moved {
             let mouse_point = self.mouse_point();
@@ -690,6 +694,10 @@ impl<'a, 'b> App<'a, 'b> {
                 }
             }
         }
+    }
+
+    fn select_id(&mut self, id: usize) {
+        self.id_map[id].1 = true;
     }
 
     fn create_id(&mut self, region: Rect) -> usize {
@@ -900,18 +908,18 @@ async fn main() -> anyhow::Result<()> {
     const IDLE_TIME: f32 = 10.0;
     let mut canvas_texture = CanvasTexture::Wait(IDLE_TIME);
 
-    app.canvas.clear();
-    app.canvas.present();
+    app.context.canvas.clear();
+    app.context.canvas.present();
     let mut event_pump = sdl_context.event_pump().map_err(|e| anyhow::anyhow!(e))?;
     'running: while app.running {
         // TODO: Id needs to get reset even when the window is not in focus
-        if true || app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus() {
+        if true || app.context.canvas.window().has_input_focus() || app.context.canvas.window().has_mouse_focus() {
             app.reset_frame_state()
         }
 
         for event in event_pump.poll_iter() {
             canvas_texture = CanvasTexture::Wait(IDLE_TIME);
-            app.mouse_moved = event.is_mouse();
+            app.context.mouse_moved = event.is_mouse();
 
             match event {
                 Event::Quit { .. } => break 'running,
@@ -919,67 +927,67 @@ async fn main() -> anyhow::Result<()> {
                     mouse_btn: MouseButton::Left,
                     ..
                 } => {
-                    app.mouse_left_down = true;
+                    app.context.mouse_left_down = true;
                 }
                 Event::MouseButtonDown {
                     mouse_btn: MouseButton::Right,
                     ..
                 } => {
-                    app.mouse_right_down = true;
+                    app.context.mouse_right_down = true;
                 }
 
                 Event::MouseButtonUp {
                     mouse_btn: MouseButton::Left,
                     ..
                 } => {
-                    app.mouse_left_up = true;
+                    app.context.mouse_left_up = true;
                 }
                 Event::MouseButtonUp {
                     mouse_btn: MouseButton::Right,
                     ..
                 } => {
-                    app.mouse_right_up = true;
+                    app.context.mouse_right_up = true;
                 }
                 Event::MouseWheel {
                     precise_x,
                     precise_y,
                     ..
                 } => {
-                    if app.mouse_scroll_y.abs() <= 80.0 {
-                        app.mouse_scroll_y_accel += app.weights.accel_accel * 0.32;
-                        app.mouse_scroll_y +=
-                            precise_y.signum() * scroll_func((precise_y * app.weights.accel).abs())
+                    if app.context.mouse_scroll_y.abs() <= 80.0 {
+                        app.context.mouse_scroll_y_accel += app.context.weights.accel_accel * 0.32;
+                        app.context.mouse_scroll_y +=
+                            precise_y.signum() * scroll_func((precise_y * app.context.weights.accel).abs())
                     }
-                    app.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
+                    app.context.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
                 }
                 Event::MouseMotion { x, y, .. } => {
-                    app.mouse_x = x;
-                    app.mouse_y = y;
+                    app.context.mouse_x = x;
+                    app.context.mouse_y = y;
                 }
                 Event::KeyDown {
                     keycode: Some(keycode),
                     keymod,
                     ..
                 } => {
-                    app.keyset.insert(keycode);
-                    app.keymod = keymod;
+                    app.context.keyset.insert(keycode);
+                    app.context.keymod = keymod;
                 }
                 Event::KeyUp {
                     keycode: Some(keycode),
                     ..
                 } => {
-                    app.keyset_up.insert(keycode);
+                    app.context.keyset_up.insert(keycode);
                 }
                 Event::Window {
                     win_event: sdl2::event::WindowEvent::Resized(_, _),
                     ..
                 } => {
-                    app.resized = true;
-                    app.mouse_x = 0;
-                    app.mouse_y = 0;
+                    app.context.resized = true;
+                    app.context.mouse_x = 0;
+                    app.context.mouse_y = 0;
                 }
                 Event::TextInput { text, .. } => {
-                    app.text = text;
+                    app.context.text = text;
                 }
                 _ => {}
             }
@@ -987,23 +995,23 @@ async fn main() -> anyhow::Result<()> {
 
         match canvas_texture {
             CanvasTexture::Cached(ref texture) => {
-                app.canvas.copy(texture, None, None).unwrap();
+                app.context.canvas.copy(texture, None, None).unwrap();
             }
             CanvasTexture::Wait(ref mut t) => {
                 *t = t.sub(app.frametime_frac()).max(0.0);
                 poll_http(&mut app);
 
-                app.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
-                app.canvas.clear();
+                app.context.canvas.set_draw_color(color_hex(BACKGROUND_COLOR));
+                app.context.canvas.clear();
 
                 draw(&mut app, &mut screen);
                 if *t <= 0.0 && app.connection_overlay.timeout <= 0.0 {
-                    let (width, height) = app.canvas.window().size();
-                    let pixel_format = app.canvas.default_pixel_format();
+                    let (width, height) = app.context.canvas.window().size();
+                    let pixel_format = app.context.canvas.default_pixel_format();
                     let pitch = pixel_format.byte_size_per_pixel() * width as usize;
                     let pixels = app
-                        .canvas
-                        .read_pixels(app.window_rect(), pixel_format)
+                        .context.canvas
+                        .read_pixels(app.context.window_rect(), pixel_format)
                         .unwrap();
                     let mut texture = texture_creator
                         .create_texture_static(pixel_format, width, height)
@@ -1013,7 +1021,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        app.canvas.present();
+        app.context.canvas.present();
 
         if show_fps {
             let time = prev_time.elapsed().as_secs_f64();
@@ -1032,44 +1040,44 @@ async fn main() -> anyhow::Result<()> {
         if false {
             let mut scroll_change = 0.01;
             if app.keydown(Keycode::A) {
-                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
                     scroll_change *= -1.0;
                 }
-                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
                     scroll_change *= 10.0;
                 }
-                app.weights.accel += scroll_change;
-                dbg!(&app.weights);
+                app.context.weights.accel += scroll_change;
+                dbg!(&app.context.weights);
             }
             if app.keydown(Keycode::S) {
-                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
                     scroll_change *= -1.0;
                 }
-                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
                     scroll_change *= 10.0;
                 }
-                app.weights.accel_accel += scroll_change;
-                dbg!(&app.weights);
+                app.context.weights.accel_accel += scroll_change;
+                dbg!(&app.context.weights);
             }
             if app.keydown(Keycode::D) {
-                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
                     scroll_change *= -1.0;
                 }
-                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
                     scroll_change *= 10.0;
                 }
-                app.weights.decel += scroll_change;
-                dbg!(&app.weights);
+                app.context.weights.decel += scroll_change;
+                dbg!(&app.context.weights);
             }
             if app.keydown(Keycode::F) {
-                if app.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
                     scroll_change *= -1.0;
                 }
-                if app.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                if app.context.keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
                     scroll_change *= 10.0;
                 }
-                app.weights.decel_decel += scroll_change;
-                dbg!(&app.weights);
+                app.context.weights.decel_decel += scroll_change;
+                dbg!(&app.context.weights);
             }
         }
 
@@ -1079,7 +1087,7 @@ async fn main() -> anyhow::Result<()> {
         if matches!(canvas_texture, CanvasTexture::Cached(_)) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
-        if !(app.canvas.window().has_input_focus() || app.canvas.window().has_mouse_focus()) {
+        if !(app.context.canvas.window().has_input_focus() || app.context.canvas.window().has_mouse_focus()) {
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
         }
     }

@@ -3,13 +3,13 @@ use sdl2::keyboard::Mod;
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::{rect, send_request, App, HttpSender, LoginProgress, RequestKind};
+use crate::{rect, send_request, textbox, App, HttpSender, LoginProgress, RequestKind};
 
 use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::layout::Layout;
 use super::{
-    color_hex, draw_button, draw_text, draw_text_centered, text_size, Screen,
-    Style, DEFAULT_BUTTON_FONT, H1_FONT_INFO, H2_FONT_INFO, INPUT_BOX_FONT_INFO,
+    color_hex, draw_button, draw_text, draw_text_centered, text_size, Screen, Style,
+    DEFAULT_BUTTON_FONT, H1_FONT_INFO, H2_FONT_INFO, INPUT_BOX_FONT_INFO,
 };
 
 pub fn get_anilist_media_list(tx: &HttpSender, user_id: u64, access_token: &str) {
@@ -35,7 +35,7 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         return;
     }
 
-    if app.keymod.contains(Mod::LCTRLMOD) && app.keydown(Keycode::Escape) {
+    if app.context.keymod.contains(Mod::LCTRLMOD) && app.keydown(Keycode::Escape) {
         app.database.skip_login_set(true);
         app.next_screen = Some(Screen::Main);
     } else if app.keydown(Keycode::Escape) {
@@ -47,8 +47,8 @@ pub fn draw_login(app: &mut App, layout: Rect) {
 
     // draw anilist header
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         H1_FONT_INFO,
         "AniList Login",
         color_hex(0x909090),
@@ -60,14 +60,14 @@ pub fn draw_login(app: &mut App, layout: Rect) {
 
     // draw clickable link to `https://anilist.co/api/v2/oauth/authorize?client_id=15365&response_type=token`
     let link_str = "Click here to get access token";
-    let (link_width, link_height) = app.text_manager.text_size(H2_FONT_INFO, link_str);
+    let (link_width, link_height) = app.context.text_manager.text_size(H2_FONT_INFO, link_str);
     let (link_layout, _) = link_layout.split_hori(link_height, link_layout.height());
     let x = link_layout.x + (link_layout.width() - link_width) as i32 / 2;
     let y = link_layout.y;
     let link_rect = rect!(x, y, link_width, link_height);
     draw_text(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         H2_FONT_INFO,
         link_str,
         color_hex(0x707070),
@@ -77,20 +77,20 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         None,
     );
 
-    let link_id = app.create_id(link_rect);
-    if app.click_elem(link_id) {
+    let link_id = app.context.create_id(link_rect);
+    if app.context.click_elem(link_id) {
         open_url("https://anilist.co/api/v2/oauth/authorize?client_id=15365&response_type=token")
             .unwrap();
     }
 
     // draw `access token` input field
-    let (_, input_text_height) = app.text_manager.text_size(INPUT_BOX_FONT_INFO, "W");
+    let (_, input_text_height) = app.context.text_manager.text_size(INPUT_BOX_FONT_INFO, "W");
     let (input_box_title_layout, mut rest) = rest.split_hori(input_text_height, rest.height());
     let input_box_title_layout = input_box_title_layout.pad_left(130).pad_right(130);
 
     draw_text(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         INPUT_BOX_FONT_INFO,
         "Access Token:",
         color_hex(0x7C7C7C),
@@ -100,15 +100,25 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         None,
     );
 
-    let textbox_state = unsafe { &mut *(&mut app.login_state.textbox as *mut _) };
-    let input_box_submit = app.textbox(textbox_state, true, 130, &mut rest);
-
+    let input_box_submit = textbox(
+        &mut app.context,
+        &mut app.login_state.textbox,
+        true,
+        130,
+        &mut rest,
+    );
     // draw submit button
     let button_width_pad = 28;
     let button_height = 42;
     let button_font_info = (DEFAULT_BUTTON_FONT, 18);
-    let (submit_button_text_width, _) = app.text_manager.text_size(button_font_info, "Submit");
-    let (skip_button_text_width, _) = app.text_manager.text_size(button_font_info, "Skip Login");
+    let (submit_button_text_width, _) = app
+        .context
+        .text_manager
+        .text_size(button_font_info, "Submit");
+    let (skip_button_text_width, _) = app
+        .context
+        .text_manager
+        .text_size(button_font_info, "Skip Login");
     let (_, rest) = rest.split_hori(10, rest.height());
     let (button_layout, _rest) = rest.split_hori(button_height, rest.height());
 
@@ -149,9 +159,10 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         LoginProgress::None => (),
         // TODO: Timeout if wait too long
         LoginProgress::Started => {
-            let (width, height) = app.canvas.window().size();
+            let (width, height) = app.context.canvas.window().size();
             let rect = Rect::from_center((width as i32 / 2, height as i32 / 2), 200, 100);
-            app.canvas
+            app.context
+                .canvas
                 .rounded_box(
                     rect.left() as i16,
                     rect.top() as i16,
@@ -163,8 +174,8 @@ pub fn draw_login(app: &mut App, layout: Rect) {
                 .unwrap();
 
             draw_text_centered(
-                &mut app.canvas,
-                &mut app.text_manager,
+                &mut app.context.canvas,
+                &mut app.context.text_manager,
                 DESCRIPTION_FONT_INFO,
                 "One second please...",
                 color_hex(0x909090),
@@ -177,10 +188,11 @@ pub fn draw_login(app: &mut App, layout: Rect) {
         LoginProgress::Failed => {
             let font_info = DESCRIPTION_FONT_INFO;
             let text = "Incorrect token; Try again!";
-            let (text_width, _text_height) = text_size(&mut app.text_manager, font_info, text);
+            let (text_width, _text_height) =
+                text_size(&mut app.context.text_manager, font_info, text);
             draw_text(
-                &mut app.canvas,
-                &mut app.text_manager,
+                &mut app.context.canvas,
+                &mut app.context.text_manager,
                 font_info,
                 text,
                 color_hex(0xA04040),

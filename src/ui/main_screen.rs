@@ -12,7 +12,7 @@ use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
-use crate::{get_scroll, rect, Format};
+use crate::{rect, register_scroll, textbox, Format};
 
 use super::layout::Layout as _;
 use super::{
@@ -33,13 +33,13 @@ type Layout = Rect;
 fn handle_main_events(app: &mut App) {
     if app.keydown(Keycode::Escape) {
         app.running = false;
-    } else if app.keydown(Keycode::F) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+    } else if app.keydown(Keycode::F) && app.context.keymod.contains(keyboard::Mod::LCTRLMOD) {
         // TODO: Select forward
-    } else if app.keydown(Keycode::B) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+    } else if app.keydown(Keycode::B) && app.context.keymod.contains(keyboard::Mod::LCTRLMOD) {
         // TODO: Select backwards
-    } else if app.keydown(Keycode::N) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+    } else if app.keydown(Keycode::N) && app.context.keymod.contains(keyboard::Mod::LCTRLMOD) {
         // TODO: Select down
-    } else if app.keydown(Keycode::P) && app.keymod.contains(keyboard::Mod::LCTRLMOD) {
+    } else if app.keydown(Keycode::P) && app.context.keymod.contains(keyboard::Mod::LCTRLMOD) {
         // TODO: Select up
     } else if app.keydown(Keycode::Return) {
         if let Some(idx) = app.main_state.selected {
@@ -54,28 +54,28 @@ fn handle_main_search_events(app: &mut App) {
     if app.keydown(Keycode::Escape) {
         app.main_state.search_anime = None;
         app.main_state.alias_anime = None;
-        app.input_util.stop();
+        app.context.input_util.stop();
     }
 }
 
 fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
-    let outer_bounds_id = app.create_id(app.window_rect());
-    let _inner_bounds_id = app.create_id(layout);
+    let outer_bounds_id = app.context.create_id(app.context.window_rect());
+    let _inner_bounds_id = app.context.create_id(layout);
     let layout_y = layout.y();
-    let (_, text_height) = app.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
-    let textbox_state = unsafe { &mut *(&mut app.title_popup_state.textbox as *mut _) };
+    let (_, text_height) = app.context.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
+    let textbox_state = &mut app.title_popup_state.textbox;
 
-    app.canvas.set_draw_color(color_hex(0x303030));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x303030));
+    app.context.canvas.fill_rect(layout).unwrap();
 
     // TODO: Draw rect with border size
-    app.canvas.set_draw_color(color_hex(0x101010));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x101010));
+    app.context.canvas.fill_rect(layout).unwrap();
 
     let mut layout = layout.pad_top(10).pad_bottom(5);
-    app.textbox(textbox_state, true, 10, &mut layout);
-    let scroll = get_scroll(&mut app.title_popup_state.scroll);
-    app.register_scroll(scroll, &mut layout);
+    textbox(&mut app.context, textbox_state, true, 10, &mut layout);
+    let scroll = &mut app.title_popup_state.scroll;
+    register_scroll(&mut app.context, scroll, &mut layout);
     let anime = &mut app.database.animes()[search_id as usize];
     let textbox = &mut app.title_popup_state.textbox;
 
@@ -104,14 +104,14 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
         app.title_popup_state.scroll.max_scroll = layout.y() as i32 - layout_y;
         let layout = layout.scroll_y(app.title_popup_state.scroll.scroll);
         let option = unsafe { &**option };
-        let option_id = app.create_id(layout);
-        app.canvas.set_clip_rect(option_layout);
+        let option_id = app.context.create_id(layout);
+        app.context.canvas.set_clip_rect(option_layout);
         let (left, right) = draw_option(app, option_id, &option.title());
         if left {
             anime.set_metadata(Some((*option).clone()));
             app.database.retrieve_images(&app.thumbnail_path).unwrap();
             app.main_state.search_anime = None;
-            app.input_util.stop();
+            app.context.input_util.stop();
             return;
         }
         if right {
@@ -121,35 +121,36 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
         }
     }
 
-    if app.click_elem(outer_bounds_id) {
+    if app.context.click_elem(outer_bounds_id) {
         app.main_state.search_anime = None;
         app.main_state.alias_anime = None;
-        app.input_util.stop();
+        app.context.input_util.stop();
     }
-    app.canvas.set_clip_rect(None);
+    app.context.canvas.set_clip_rect(None);
 }
 
 fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
-    let outer_bounds_id = app.create_id(app.window_rect());
-    let _inner_bounds_id = app.create_id(layout);
+    let outer_bounds_id = app.context.create_id(app.context.window_rect());
+    let _inner_bounds_id = app.context.create_id(layout);
     let layout_y = layout.y();
     let anime = &mut app.database.animes()[alias_id as usize];
     let text_height = app
+        .context
         .text_manager
         .font_height(BACK_BUTTON_FONT_INFO);
 
-    app.canvas.set_draw_color(color_hex(0x303030));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x303030));
+    app.context.canvas.fill_rect(layout).unwrap();
 
     // TODO: Draw rect with border size
-    app.canvas.set_draw_color(color_hex(0x101010));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x101010));
+    app.context.canvas.fill_rect(layout).unwrap();
 
     let mut layout = layout.pad_top(10);
-    let textbox = unsafe { &mut *(&mut app.alias_popup_state.textbox as *mut _) };
-    app.textbox(textbox, true, 10, &mut layout);
-    let scroll = get_scroll(&mut app.alias_popup_state.scroll);
-    app.register_scroll(scroll, &mut layout);
+    let textbox_state = &mut app.alias_popup_state.textbox;
+    textbox(&mut app.context, textbox_state, true, 10, &mut layout);
+    let scroll = &mut app.alias_popup_state.scroll;
+    register_scroll(&mut app.context, scroll, &mut layout);
     let option_layout = layout;
     let options: Box<[&str]> = {
         if anime.title() == anime.filename() {
@@ -169,14 +170,14 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     let option_layouts = option_layout.split_even_hori(text_height + 20);
 
     for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
-        let option_id = app.create_id(layout);
+        let option_id = app.context.create_id(layout);
         debug_assert!(outer_bounds_id < option_id);
         app.alias_popup_state.scroll.max_scroll = layout.bottom() - layout_y;
         let (left, right) = draw_option(app, option_id, option);
         if left {
             anime.set_alias(option.to_string());
             app.main_state.alias_anime = None;
-            app.input_util.stop();
+            app.context.input_util.stop();
         }
         if right {
             app.alias_popup_state.textbox.text = option.to_string();
@@ -186,33 +187,33 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
 
     if app.keydown(Keycode::Return) {
         app.main_state.alias_anime = None;
-        app.input_util.stop();
+        app.context.input_util.stop();
     }
 
-    if app.click_elem(outer_bounds_id) {
+    if app.context.click_elem(outer_bounds_id) {
         app.main_state.search_anime = None;
         app.main_state.alias_anime = None;
-        app.input_util.stop();
+        app.context.input_util.stop();
     }
 }
 
 fn draw_option(app: &mut App, option_id: usize, option: &str) -> (bool, bool) {
-    let layout = app.rect_id(option_id);
+    let layout = app.context.rect_id(option_id);
     let font_info = INPUT_BOX_FONT_INFO;
-    if app.state_id(option_id) {
-        app.canvas.set_draw_color(color_hex(0x505050));
-        app.canvas.fill_rect(layout).unwrap();
+    if app.context.state_id(option_id) {
+        app.context.canvas.set_draw_color(color_hex(0x505050));
+        app.context.canvas.fill_rect(layout).unwrap();
     }
 
-    let (text_width, text_height) = app.text_manager.text_size(font_info, option);
+    let (text_width, text_height) = app.context.text_manager.text_size(font_info, option);
 
     let side_pad = 5;
     if text_width > layout.width() - side_pad {
         let layout = layout.pad_left(side_pad as i32).pad_right(side_pad as i32);
-        app.canvas.set_clip_rect(layout);
+        app.context.canvas.set_clip_rect(layout);
         draw_text(
-            &mut app.canvas,
-            &mut app.text_manager,
+            &mut app.context.canvas,
+            &mut app.context.text_manager,
             font_info,
             option,
             color_hex(0xa0a0a0),
@@ -221,11 +222,11 @@ fn draw_option(app: &mut App, option_id: usize, option: &str) -> (bool, bool) {
             None,
             None,
         );
-        app.canvas.set_clip_rect(None);
+        app.context.canvas.set_clip_rect(None);
     } else {
         draw_text_centered(
-            &mut app.canvas,
-            &mut app.text_manager,
+            &mut app.context.canvas,
+            &mut app.context.text_manager,
             font_info,
             option,
             color_hex(0xa0a0a0),
@@ -236,14 +237,14 @@ fn draw_option(app: &mut App, option_id: usize, option: &str) -> (bool, bool) {
         );
     }
 
-    (app.click_elem(option_id), app.click_elem_right(option_id))
+    (app.context.click_elem(option_id), app.context.click_elem_right(option_id))
 }
 
 pub fn draw_main(app: &mut App, layout: Layout) {
-    let (window_width, window_height) = app.canvas.window().size();
+    let (window_width, window_height) = app.context.canvas.window().size();
     let mut card_layouts = layout;
-    let scroll = get_scroll(&mut app.main_state.scroll);
-    app.register_scroll(scroll, &mut card_layouts);
+    let scroll = &mut app.main_state.scroll;
+    register_scroll(&mut app.context, scroll, &mut card_layouts);
 
     let (_cards_per_row, card_layouts) = card_layouts
         .pad_top(CARD_Y_PAD_OUTER)
@@ -305,9 +306,10 @@ pub fn draw_main(app: &mut App, layout: Layout) {
 
 pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradient: Option<i32>) {
     let texture = app
+        .context
         .image_manager
         .load(
-            &mut app.canvas,
+            &mut app.context.canvas,
             MISSING_THUMBNAIL,
             TextureOptions::new()
                 .ratio(Some((layout.width(), layout.height())))
@@ -316,8 +318,8 @@ pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradie
         )
         .unwrap();
 
-    app.canvas.set_blend_mode(BlendMode::Blend);
-    app.canvas.copy(texture.as_ref(), None, layout).unwrap();
+    app.context.canvas.set_blend_mode(BlendMode::Blend);
+    app.context.canvas.copy(texture.as_ref(), None, layout).unwrap();
 }
 
 fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
@@ -344,9 +346,9 @@ fn draw_card_extra_menu(
     mut layout: Layout,
     idx: usize,
 ) -> bool {
-    app.canvas.set_clip_rect(layout);
-    let scroll = get_scroll(&mut app.main_state.extra_menu_scroll);
-    app.register_scroll(scroll, &mut layout);
+    app.context.canvas.set_clip_rect(layout);
+    let scroll = &mut app.main_state.extra_menu_scroll;
+    register_scroll(&mut app.context, scroll, &mut layout);
     let mut clicked = false;
     let menu_button_pad_outer = 10;
     let card_height = layout.height() * 2 / 7;
@@ -415,7 +417,7 @@ fn draw_card_extra_menu(
         clicked = true;
         eprintln!("Attach flags clicked!");
     }
-    app.canvas.set_clip_rect(None);
+    app.context.canvas.set_clip_rect(None);
     clicked
 }
 
@@ -473,7 +475,7 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
 }
 
 fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Layout) -> bool {
-    let card_id = app.create_id(layout);
+    let card_id = app.context.create_id(layout);
     app.main_state.selectable.insert(card_id);
     // draw card background/border
     let mut selected = false;
@@ -481,7 +483,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     let card_fg_color = color_hex(TITLE_FONT_COLOR);
     let (text_width, text_height) = {
         let title = anime.display_title();
-        text_size(&mut app.text_manager, TITLE_FONT_INFO, title)
+        text_size(&mut app.context.text_manager, TITLE_FONT_INFO, title)
     };
     let (_top_layout, text_layout) =
         layout.split_hori(layout.height() - text_height - 19, layout.height());
@@ -491,19 +493,19 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     // draw thumbnail
     draw_thumbnail(app, anime, image_layout);
 
-    if app.click_elem(card_id) {
+    if app.context.click_elem(card_id) {
         app.episode_state.episode_scroll.scroll = 0;
         app.main_state.alias_anime = None;
         app.main_state.search_anime = None;
         app.next_screen = Some(Screen::SelectEpisode(anime));
     }
 
-    if app.click_elem_right(card_id) {
+    if app.context.click_elem_right(card_id) {
         // Toggle extra menu
         app.main_state.extra_menu_scroll.scroll = 0;
         match app.main_state.extra_menu_id {
             Some(_) => app.main_state.extra_menu_id = None,
-            None => app.main_state.extra_menu_id = Some(app.id as u32),
+            None => app.main_state.extra_menu_id = Some(app.context.id as u32),
         }
     }
 
@@ -514,7 +516,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
                 let mut title = anime.display_title().to_string();
 
                 while text_size(
-                    &mut app.text_manager,
+                    &mut app.context.text_manager,
                     TITLE_FONT_INFO,
                     format!("{title}..."),
                 )
@@ -530,14 +532,14 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         }
     };
 
-    let string_manager = &mut app.string_manager;
+    let string_manager = &mut app.context.string_manager;
     let title = string_manager.load(anime.display_title().as_ptr(), Format::Truncate, f);
 
     // draw title
-    app.canvas.set_draw_color(card_fg_color);
+    app.context.canvas.set_draw_color(card_fg_color);
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         TITLE_FONT_INFO,
         title,
         card_fg_color,
@@ -551,11 +553,11 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         && app.main_state.search_anime.is_none()
         && app.main_state.alias_anime.is_none()
     {
-        app.canvas.set_blend_mode(BlendMode::Blend);
+        app.context.canvas.set_blend_mode(BlendMode::Blend);
         selected = true;
         let image_hover_color = color_hex_a(0x1010108B);
         let image_rect = image_layout;
-        app.canvas
+        app.context.canvas
             .rounded_box(
                 image_rect.left() as i16,
                 image_rect.top() as i16,
@@ -569,7 +571,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         if app
             .main_state
             .extra_menu_id
-            .is_some_and(|id| id == app.id as u32)
+            .is_some_and(|id| id == app.context.id as u32)
         {
             draw_card_extra_menu(app, anime, top_layout, idx)
         } else {
@@ -578,7 +580,7 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     } else if app
         .main_state
         .extra_menu_id
-        .is_some_and(|id| id == app.id as u32)
+        .is_some_and(|id| id == app.context.id as u32)
     {
         app.main_state.extra_menu_id = None;
     }

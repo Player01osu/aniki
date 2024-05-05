@@ -609,8 +609,8 @@ fn draw_image_clip(
     rounded: Option<i16>,
     gradient: Option<i32>,
 ) -> Result<()> {
-    let texture = app.image_manager.load(
-        &mut app.canvas,
+    let texture = app.context.image_manager.load(
+        &mut app.context.canvas,
         path,
         TextureOptions::new()
             .ratio(Some((layout.width(), layout.height())))
@@ -633,8 +633,8 @@ fn draw_image_clip(
     image_width = (image_width as f32 / scaling) as u32;
     image_height = (image_height as f32 / scaling) as u32;
 
-    app.canvas.set_blend_mode(BlendMode::Blend);
-    app.canvas
+    app.context.canvas.set_blend_mode(BlendMode::Blend);
+    app.context.canvas
         .copy(
             &texture,
             None,
@@ -652,9 +652,9 @@ fn draw_image_float(
     rounded: Option<i16>,
     gradient: Option<i32>,
 ) -> Result<()> {
-    app.canvas.set_blend_mode(BlendMode::Blend);
-    let texture = app.image_manager.load(
-        &mut app.canvas,
+    app.context.canvas.set_blend_mode(BlendMode::Blend);
+    let texture = app.context.image_manager.load(
+        &mut app.context.canvas,
         path,
         TextureOptions::new().rounded(rounded).gradient(gradient),
     )?;
@@ -689,8 +689,8 @@ fn draw_image_float(
             image_height,
         ),
     };
-    app.canvas.set_blend_mode(BlendMode::Blend);
-    app.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
+    app.context.canvas.set_blend_mode(BlendMode::Blend);
+    app.context.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
     Ok(())
 }
 
@@ -790,24 +790,24 @@ impl Style {
 
 /// Returns whether the button has been clicked
 fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
-    let button_id = app.create_id(layout);
+    let button_id = app.context.create_id(layout);
     let button_rect = layout;
-    let (text_width, _text_height) = text_size(&mut app.text_manager, style.font_info, text);
+    let (text_width, _text_height) = text_size(&mut app.context.text_manager, style.font_info, text);
     let text = if text_width > layout.width() {
         format!("{}...", text.split_at(15).0)
     } else {
         text.to_owned()
     };
 
-    let (button_fg_color, button_bg_color) = if app.state_id(button_id) {
+    let (button_fg_color, button_bg_color) = if app.context.state_id(button_id) {
         (style.fg_hover_color, style.bg_hover_color)
     } else {
         (style.fg_color, style.bg_color)
     };
-    app.canvas.set_draw_color(button_bg_color);
+    app.context.canvas.set_draw_color(button_bg_color);
     match style.round {
         Some(round) => {
-            app.canvas
+            app.context.canvas
                 .rounded_box(
                     button_rect.left() as i16,
                     button_rect.top() as i16,
@@ -819,13 +819,13 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
                 .unwrap();
         }
         None => {
-            app.canvas.fill_rect(button_rect).unwrap();
+            app.context.canvas.fill_rect(button_rect).unwrap();
         }
     }
 
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         style.font_info,
         text,
         button_fg_color,
@@ -835,7 +835,7 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
         None,
     );
 
-    app.click_elem(button_id)
+    app.context.click_elem(button_id)
 }
 
 fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
@@ -851,7 +851,7 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
     let bg_color = color_hex(0x9A9A9A);
     if let Some(rounded) = rounded {
         let rect = layout;
-        app.canvas
+        app.context.canvas
             .rounded_box(
                 rect.left() as i16,
                 rect.top() as i16,
@@ -862,12 +862,12 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
             )
             .unwrap();
     } else {
-        app.canvas.set_draw_color(bg_color);
-        app.canvas.fill_rect(layout).unwrap();
+        app.context.canvas.set_draw_color(bg_color);
+        app.context.canvas.fill_rect(layout).unwrap();
     }
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         DESCRIPTION_FONT_INFO,
         "No Thumbnail :<",
         color_hex(0x303030),
@@ -879,21 +879,22 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
 }
 
 fn dbg_layout(app: &mut App, layout: Layout) {
-    app.canvas.set_draw_color(Color::RED);
-    app.canvas.draw_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(Color::RED);
+    app.context.canvas.draw_rect(layout).unwrap();
 }
 
 fn draw_connection_overlay_connected(app: &mut App) {
     let (_, text_height) = app
+        .context
         .text_manager
         .text_size(CONNECTION_FONT_INFO, "Connected");
-    let (width, height) = app.canvas.window().size();
+    let (width, height) = app.context.canvas.window().size();
     let layout = Layout::new(0, (height - text_height) as i32, width, height);
-    app.canvas.set_draw_color(color_hex(0x006600));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x006600));
+    app.context.canvas.fill_rect(layout).unwrap();
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         CONNECTION_FONT_INFO,
         "Connected",
         color_hex(0xDADADA),
@@ -906,15 +907,16 @@ fn draw_connection_overlay_connected(app: &mut App) {
 
 fn draw_connection_overlay_disconnected(app: &mut App) {
     let (_, text_height) = app
+        .context
         .text_manager
         .text_size(CONNECTION_FONT_INFO, "Disconnected");
-    let (width, height) = app.canvas.window().size();
+    let (width, height) = app.context.canvas.window().size();
     let layout = Layout::new(0, (height - text_height) as i32, width, height);
-    app.canvas.set_draw_color(color_hex(0x101010));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x101010));
+    app.context.canvas.fill_rect(layout).unwrap();
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         CONNECTION_FONT_INFO,
         "Disconnected",
         color_hex(0xDADADA),
@@ -932,8 +934,8 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
         .font_info(TOOLBAR_FONT_INFO)
         .round(None);
 
-    app.canvas.set_draw_color(color_hex(0x0B0B0B));
-    app.canvas.fill_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x0B0B0B));
+    app.context.canvas.fill_rect(layout).unwrap();
 
     // Draw login button
     let _layout = {
@@ -941,7 +943,7 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
             ConnectionOverlayState::Disconnected => "Login",
             ConnectionOverlayState::Connected => "Logout",
         };
-        let (login_width, _) = app.text_manager.text_size(TOOLBAR_FONT_INFO, text);
+        let (login_width, _) = app.context.text_manager.text_size(TOOLBAR_FONT_INFO, text);
         let login_width = login_width + toolbar_button_side_pad;
         let (layout, login_button_layout) =
             layout.split_vert(layout.width() - login_width, layout.width());
@@ -963,8 +965,8 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
 }
 
 pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
-    let (window_width, window_height) = app.canvas.window().size();
-    let (_, text_height) = app.text_manager.text_size(TOOLBAR_FONT_INFO, "W");
+    let (window_width, window_height) = app.context.canvas.window().size();
+    let (_, text_height) = app.context.text_manager.text_size(TOOLBAR_FONT_INFO, "W");
     if app.keyup(Keycode::LAlt) {
         app.show_toolbar = !app.show_toolbar;
     };
@@ -1008,7 +1010,7 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     }
 
     if let Some(next_screen) = app.next_screen.take() {
-        for (rect, selected) in app.id_map.iter_mut().rev() {
+        for (rect, selected) in app.context.id_map.iter_mut().rev() {
             if *selected {
                 *rect = Rect::new(0, 0, 0, 0);
             }

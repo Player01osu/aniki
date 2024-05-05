@@ -1,7 +1,7 @@
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::{database, get_scroll, Format, StringManager};
+use crate::{database, register_scroll, Format, StringManager};
 use crate::database::episode::Episode;
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
@@ -29,12 +29,11 @@ pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 const THUMBNAIL_RAD: i16 = 6;
 
 fn draw_episode_list(app: &mut App, anime: &database::Anime, mut layout: Rect) {
-    app.canvas.set_clip_rect(layout);
-    let string_manager = unsafe { &mut *(&mut app.string_manager as *mut StringManager) };
+    app.context.canvas.set_clip_rect(layout);
     let episode_height = 70;
     let episode_count = { anime.len() + 1 + anime.has_next_episode() as usize };
-    let scroll = get_scroll(&mut app.episode_state.episode_scroll);
-    app.register_scroll(scroll, &mut layout);
+    register_scroll(&mut app.context, &mut app.episode_state.episode_scroll, &mut layout);
+    let scroll = &app.episode_state.episode_scroll;
     let layouts = layout
         .scroll_y(app.episode_state.episode_scroll.scroll)
         .split_even_hori(episode_height)
@@ -74,7 +73,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, mut layout: Rect) {
 
     let episode_map = anime.episodes();
     for (idx, (episode_layout, (episode, _))) in layout_iter.zip(episode_map).enumerate() {
-        let episode_str = string_manager.load(
+        let episode_str = app.context.string_manager.load(
             anime.filename().as_ptr(),
             Format::Episode(idx as u8),
             || format!("{episode}"),
@@ -88,7 +87,7 @@ fn draw_episode_list(app: &mut App, anime: &database::Anime, mut layout: Rect) {
             layout,
         );
     }
-    app.canvas.set_clip_rect(None);
+    app.context.canvas.set_clip_rect(None);
 }
 
 pub fn draw_anime_expand(app: &mut App, layout: Rect, anime: &database::Anime) {
@@ -110,7 +109,7 @@ fn draw_top_panel_with_metadata(
     layout: Rect,
     metadata: &AnimeDatabaseData,
 ) {
-    let (_, font_height) = app.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
+    let (_, font_height) = app.context.text_manager.text_size(DIRECTORY_NAME_FONT_INFO, "L");
     let description_layout = layout;
     let (title_layout, description_layout) = description_layout.split_hori(2, 7);
     let (title_layout, description_header_layout) = title_layout.split_hori(1, 2);
@@ -119,8 +118,8 @@ fn draw_top_panel_with_metadata(
         description_layout.height(),
     );
     draw_text(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         H1_FONT_INFO,
         anime.display_title(),
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -130,8 +129,8 @@ fn draw_top_panel_with_metadata(
         Some(title_layout.height()),
     );
     draw_text(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         H2_FONT_INFO,
         "Description",
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -141,8 +140,8 @@ fn draw_top_panel_with_metadata(
         Some(description_header_layout.height()),
     );
     draw_text(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         DESCRIPTION_FONT_INFO,
         metadata.tags().join(", "),
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -151,10 +150,10 @@ fn draw_top_panel_with_metadata(
         Some(description_layout.width()),
         Some(description_layout.height()),
     );
-    app.canvas.set_clip_rect(directory_name_layout);
+    app.context.canvas.set_clip_rect(directory_name_layout);
     draw_text_centered(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         DIRECTORY_NAME_FONT_INFO,
         anime.filename(),
         color_hex(DIRECTORY_NAME_FONT_COLOR),
@@ -163,13 +162,13 @@ fn draw_top_panel_with_metadata(
         None,
         Some(directory_name_layout.height()),
     );
-    app.canvas.set_clip_rect(None);
+    app.context.canvas.set_clip_rect(None);
 }
 
 fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: Rect) {
     let description_layout = match anime.thumbnail() {
         Some(thumbnail) => {
-            if let Ok((image_width, image_height)) = app.image_manager.query_size(&mut app.canvas, thumbnail) {
+            if let Ok((image_width, image_height)) = app.context.image_manager.query_size(&mut app.context.canvas, thumbnail) {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height() / image_height, layout.width());
                 let _ = draw_image_float(app, thumbnail, image_layout, None, Some(THUMBNAIL_RAD), None);
@@ -206,22 +205,23 @@ fn draw_episode(
     _clip_rect: Rect,
 ) {
     let (play_width, play_height) = app
+        .context
         .image_manager
-        .query_size(&mut app.canvas, PLAY_ICON)
+        .query_size(&mut app.context.canvas, PLAY_ICON)
         .expect("Failed to load image");
     let (play_layout, ep_name_layout) = layout
         .pad_outer(0, 5)
         .pad_right(5)
         .split_vert(play_width * layout.height() / play_height, layout.width());
     let ep_name_layout = ep_name_layout.pad_left(30);
-    let id = app.create_id(layout);
+    let id = app.context.create_id(layout);
     app.episode_state.selectable.insert(id);
 
-    if app.state_id(id) {
-        app.canvas.set_draw_color(color_hex(0x4A4A4A));
-        app.canvas.fill_rect(layout).unwrap();
+    if app.context.state_id(id) {
+        app.context.canvas.set_draw_color(color_hex(0x4A4A4A));
+        app.context.canvas.fill_rect(layout).unwrap();
     }
-    if app.click_elem(id) {
+    if app.context.click_elem(id) {
         let anime = app.database.get_anime(anime.filename()).unwrap();
         anime.update_watched(episode.to_owned()).unwrap();
         let paths = anime.find_episode_path(&episode);
@@ -234,8 +234,8 @@ fn draw_episode(
     }
     let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)), None, None);
     draw_text(
-        &mut app.canvas,
-        &mut app.text_manager,
+        &mut app.context.canvas,
+        &mut app.context.text_manager,
         BACK_BUTTON_FONT_INFO,
         text,
         color_hex(DESCRIPTION_FONT_COLOR),
@@ -244,6 +244,6 @@ fn draw_episode(
         Some(ep_name_layout.width()),
         None,
     );
-    app.canvas.set_draw_color(color_hex(0x2A2A2A));
-    app.canvas.draw_rect(layout).unwrap();
+    app.context.canvas.set_draw_color(color_hex(0x2A2A2A));
+    app.context.canvas.draw_rect(layout).unwrap();
 }
