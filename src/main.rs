@@ -633,7 +633,10 @@ fn register_scroll(context: &mut Context, scroll: &mut Scroll, region: &mut Rect
             scroll.scroll += 6;
         }
 
-        scroll.scroll += context.mouse_scroll_y as i32;
+        scroll.scroll = scroll
+            .scroll
+            .saturating_add(context.mouse_scroll_y as i32)
+            .clamp(-scroll.max_scroll, 0);
     }
 
     scroll.scroll = scroll
