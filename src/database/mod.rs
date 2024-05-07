@@ -591,7 +591,11 @@ impl<'a> Database<'a> {
             .filter(|v| !is_empty_dir_entry(v))
             .map(|v| (o_to_str!(v.file_name()), v.path()))
             .for_each(|(name, path)| {
-                match self.anime_map.iter_mut().find(|anime| anime.filename == name) {
+                match self
+                    .anime_map
+                    .iter_mut()
+                    .find(|anime| anime.filename == name)
+                {
                     None => {
                         let mut chars = name.chars();
                         sanitize::sanitize_name(&mut chars, &mut sanitized_name);
@@ -608,7 +612,8 @@ impl<'a> Database<'a> {
                             .indexed_db
                             .get_or_insert_with(JsonIndexed::new)
                             .match_name(map, sanitized_name.trim());
-                        self.anime_map.push(Anime::from_path(path, name, metadata.cloned(), time));
+                        self.anime_map
+                            .push(Anime::from_path(path, name, metadata.cloned(), time));
                         sanitized_name.clear();
                     }
                     Some(v) => {
@@ -656,8 +661,7 @@ impl<'a> Database<'a> {
         // mutated (such as inserting or removing), *so don't do that*.
 
         // TODO: cached_view use indices
-        let anime_map: &'a mut Vec<Anime> =
-            unsafe { &mut *(&mut self.anime_map as *mut _) };
+        let anime_map: &'a mut Vec<Anime> = unsafe { &mut *(&mut self.anime_map as *mut _) };
         self.cached_view.last_updated = get_time();
         self.cached_view.animes = anime_map
             .iter_mut()

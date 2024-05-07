@@ -1,9 +1,8 @@
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::{database, register_scroll, Format};
 use crate::database::episode::Episode;
-use crate::database::json_database::AnimeDatabaseData;
+use crate::{database, register_scroll, Context, Format};
 use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
@@ -12,8 +11,8 @@ use crate::{
 use super::layout::Layout;
 use super::{
     draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered,
-    update_anilist_watched, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON,
-    THUMBNAIL_MISSING_SIZE, TITLE_FONT, TITLE_FONT_COLOR,
+    update_anilist_watched, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, THUMBNAIL_MISSING_SIZE,
+    TITLE_FONT, TITLE_FONT_COLOR,
 };
 
 pub const DESCRIPTION_X_PAD_OUTER: u32 = 10;
@@ -185,10 +184,21 @@ fn draw_top_panel_with_metadata(context: &mut Context, anime: &database::Anime, 
 fn draw_top_panel_anime_expand(app: &mut App, idx: usize, layout: Rect) {
     let description_layout = match app.database.get_idx(idx).thumbnail() {
         Some(thumbnail) => {
-            if let Ok((image_width, image_height)) = app.context.image_manager.query_size(&mut app.context.canvas, thumbnail) {
+            if let Ok((image_width, image_height)) = app
+                .context
+                .image_manager
+                .query_size(&mut app.context.canvas, thumbnail)
+            {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height() / image_height, layout.width());
-                let _ = draw_image_float(&mut app.context, thumbnail, image_layout, None, Some(THUMBNAIL_RAD), None);
+                let _ = draw_image_float(
+                    &mut app.context,
+                    thumbnail,
+                    image_layout,
+                    None,
+                    Some(THUMBNAIL_RAD),
+                    None,
+                );
                 description_layout.pad_outer(10, 10)
             } else {
                 let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
@@ -253,7 +263,14 @@ fn draw_episode(
             update_anilist_watched(&app.http_tx, &access_token, app.database.get_mut_idx(idx));
         }
     }
-    let _ = draw_image_float(&mut app.context, PLAY_ICON, play_layout, Some((10, 0)), None, None);
+    let _ = draw_image_float(
+        &mut app.context,
+        PLAY_ICON,
+        play_layout,
+        Some((10, 0)),
+        None,
+        None,
+    );
     draw_text(
         &mut app.context.canvas,
         &mut app.context.text_manager,
