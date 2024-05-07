@@ -1,5 +1,12 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
+
+mod anilist_serde;
+mod config;
+mod database;
+mod http;
+mod ui;
+
 use config::Config;
 use database::json_database::AnimeDatabaseData;
 use database::Database;
@@ -38,12 +45,6 @@ use ui::{color_hex, draw, BACKGROUND_COLOR};
 use crate::http::{get_anilist_media_list, poll_http, send_login, send_request, RequestKind};
 use crate::ui::layout::Layout;
 use crate::ui::{INPUT_BOX_FONT_INFO, SCROLLBAR_COLOR};
-
-mod anilist_serde;
-mod config;
-mod database;
-mod http;
-mod ui;
 
 const MOUSE_MOVED: u8      = 1;
 const MOUSE_LEFT_UP: u8    = 2;
