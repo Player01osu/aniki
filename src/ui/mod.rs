@@ -556,7 +556,7 @@ impl<'a> TextureManager<'a> {
 pub enum Screen {
     Main,
     Login,
-    SelectEpisode(*const database::Anime),
+    SelectEpisode(usize),
 }
 
 fn rgb_hex(hex: u32) -> (u8, u8, u8) {
@@ -983,10 +983,9 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     match screen {
         Screen::Login => draw_login(app, layout),
         Screen::Main => draw_main(app, layout),
-        Screen::SelectEpisode(anime) => {
+        Screen::SelectEpisode(idx) => {
             // Anime reference will never get changed while drawing frame
-            let anime = unsafe { &**anime };
-            draw_anime_expand(app, layout, anime);
+            draw_anime_expand(app, layout, *idx);
         }
     }
 

@@ -408,8 +408,8 @@ impl Anime {
         }
     }
 
-    pub fn episodes(&self) -> &EpisodeMap {
-        &self.episodes
+    pub fn episodes<'a>(&self) -> &'a EpisodeMap {
+        unsafe { &*(&self.episodes as *const _) }
     }
 
     /// Prefer `.update_watched` because it checks if episode exists in episode_map.
@@ -691,6 +691,24 @@ impl<'a> Database<'a> {
         // References to this slice is only expected to live for one frame, and
         // `cached_view` should not be mutated while being borrowed.
         unsafe { std::mem::transmute(self.cached_view.animes.as_mut_slice()) }
+    }
+
+    pub fn cache_idx_to_map_idx(&self, idx: usize) -> usize {
+        let anime = &self.cached_view.animes[idx];
+        self.anime_map
+            .iter()
+            .enumerate()
+            .find(|(_, v)| (*v) as *const _ == (*anime) as *const _)
+            .unwrap()
+            .0
+    }
+
+    pub fn get_idx(&self, idx: usize) -> &Anime {
+        &self.anime_map[idx]
+    }
+
+    pub fn get_mut_idx(&mut self, idx: usize) -> &mut Anime {
+        &mut self.anime_map[idx]
     }
 
     pub fn get_anime<'b>(&mut self, anime: impl AsRef<str>) -> Option<&'b mut Anime> {

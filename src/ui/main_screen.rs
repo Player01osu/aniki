@@ -44,8 +44,8 @@ fn handle_main_events(app: &mut App) {
     } else if app.keydown(Keycode::Return) {
         if let Some(idx) = app.main_state.selected {
             // Should exist
-            let anime = unsafe { app.database.animes().get_unchecked(idx) };
-            app.next_screen = Some(Screen::SelectEpisode(*anime));
+            let idx = app.database.cache_idx_to_map_idx(idx);
+            app.next_screen = Some(Screen::SelectEpisode(idx));
         }
     }
 }
@@ -495,10 +495,11 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
     draw_thumbnail(app, anime, image_layout);
 
     if app.context.click_elem(card_id) {
+        let idx = app.database.cache_idx_to_map_idx(idx);
         app.episode_state.episode_scroll.scroll = 0;
         app.main_state.alias_anime = None;
         app.main_state.search_anime = None;
-        app.next_screen = Some(Screen::SelectEpisode(anime));
+        app.next_screen = Some(Screen::SelectEpisode(idx));
     }
 
     if app.context.click_elem_right(card_id) {
