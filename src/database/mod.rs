@@ -5,12 +5,11 @@ pub mod sanitize;
 use anyhow::Context;
 use episode::Episode;
 use flexbuffers::{DeserializationError, SerializationError};
-use std::collections::btree_map::Entry;
 use std::fs::{metadata, read_dir, DirEntry, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTimeError;
-use std::{collections::BTreeMap, path::Path, time::SystemTime};
+use std::{path::Path, time::SystemTime};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -44,7 +43,7 @@ pub struct AniListCred {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Database<'a> {
-    anime_map: BTreeMap<Box<str>, Anime>,
+    anime_map: Vec<Anime>,
     previous_update: Vec<(Box<str>, u64)>,
     skip_login: bool,
     anilist_cred: Option<AniListCred>,
@@ -482,7 +481,7 @@ impl AniListCred {
 impl<'a> Database<'a> {
     pub fn new(path: impl AsRef<str>, anime_directories: Vec<impl AsRef<str>>) -> Result<Self> {
         let path = path.as_ref();
-        match std::fs::read(path) {
+        let mut db = match std::fs::read(path) {
             Ok(v) => {
                 let mut db = flexbuffers::from_slice::<Self>(&v)?;
 
@@ -513,14 +512,12 @@ impl<'a> Database<'a> {
                         }
                     }
                 }
-
-                db.update_cached();
-                Ok(db)
+                db
             }
             Err(_) => {
                 let mut db = Self {
-                    anime_map: BTreeMap::new(),
-                    previous_update: Vec::new(),
+                    anime_map: vec![],
+                    previous_update: vec![],
                     skip_login: false,
                     anilist_cred: None,
                     indexed_db: None,
@@ -528,10 +525,12 @@ impl<'a> Database<'a> {
                     anilist_collections: None,
                 };
                 db.update(anime_directories);
-                db.update_cached();
-                Ok(db)
+                db
             }
-        }
+        };
+        db.update_cached();
+        db.anime_map.sort_by(|a, b| a.filename.cmp(&b.filename));
+        Ok(db)
     }
 
     pub fn skip_login(&self) -> bool {
@@ -570,7 +569,7 @@ impl<'a> Database<'a> {
         if !Path::new(image_directory).exists() {
             std::fs::create_dir(image_directory)?;
         }
-        for anime in self.anime_map.values_mut() {
+        for anime in &mut self.anime_map {
             if let Some(metadata) = &anime.metadata {
                 let thumbnail_path = format!("{image_directory}/{}.jpg", metadata.title());
                 if !std::path::Path::new(&thumbnail_path).exists() {
@@ -592,8 +591,8 @@ impl<'a> Database<'a> {
             .filter(|v| !is_empty_dir_entry(v))
             .map(|v| (o_to_str!(v.file_name()), v.path()))
             .for_each(|(name, path)| {
-                match self.anime_map.entry(name.clone().into()) {
-                    Entry::Vacant(v) => {
+                match self.anime_map.iter_mut().find(|anime| anime.filename == name) {
+                    None => {
                         let mut chars = name.chars();
                         sanitize::sanitize_name(&mut chars, &mut sanitized_name);
 
@@ -609,12 +608,12 @@ impl<'a> Database<'a> {
                             .indexed_db
                             .get_or_insert_with(JsonIndexed::new)
                             .match_name(map, sanitized_name.trim());
-                        v.insert(Anime::from_path(path, name, metadata.cloned(), time));
+                        self.anime_map.push(Anime::from_path(path, name, metadata.cloned(), time));
                         sanitized_name.clear();
                     }
-                    Entry::Occupied(mut v) => {
-                        if v.get().last_updated < dir_modified_time(&path).unwrap()
-                            || v.get().episodes().first().is_some_and(|(_, v)| {
+                    Some(v) => {
+                        if v.last_updated < dir_modified_time(&path).unwrap()
+                            || v.episodes().first().is_some_and(|(_, v)| {
                                 !v.iter().any(|v| {
                                     Path::new(v).canonicalize().is_ok_and(|v| {
                                         v.parent().unwrap().eq(&path.canonicalize().unwrap())
@@ -622,7 +621,7 @@ impl<'a> Database<'a> {
                                 })
                             })
                         {
-                            v.get_mut().update_episodes();
+                            v.update_episodes();
                         }
                     }
                 };
@@ -655,11 +654,13 @@ impl<'a> Database<'a> {
         //
         // Doing this will not cause invariances unless `anime_map` is
         // mutated (such as inserting or removing), *so don't do that*.
-        let anime_map: &'a mut BTreeMap<Box<str>, Anime> =
+
+        // TODO: cached_view use indices
+        let anime_map: &'a mut Vec<Anime> =
             unsafe { &mut *(&mut self.anime_map as *mut _) };
         self.cached_view.last_updated = get_time();
         self.cached_view.animes = anime_map
-            .values_mut()
+            .iter_mut()
             .filter(|v| v.paths.iter().any(|v| Path::new(&v).exists()))
             .collect();
         self.cached_view
@@ -694,7 +695,8 @@ impl<'a> Database<'a> {
 
     pub fn get_anime<'b>(&mut self, anime: impl AsRef<str>) -> Option<&'b mut Anime> {
         self.anime_map
-            .get_mut(anime.as_ref())
+            .iter_mut()
+            .find(|v| v.filename == anime.as_ref())
             .map(|v| unsafe { &mut *(v as *mut _) })
     }
 
