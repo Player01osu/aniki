@@ -2,6 +2,7 @@ use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
 use crate::database::episode::Episode;
+use crate::database::AnimeMapIdx;
 use crate::{database, register_scroll, Context, Format};
 use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
@@ -105,7 +106,8 @@ fn draw_episode_list(app: &mut App, idx: usize, mut layout: Rect) {
     app.context.canvas.set_clip_rect(None);
 }
 
-pub fn draw_anime_expand(app: &mut App, layout: Rect, idx: usize) {
+pub fn draw_anime_expand(app: &mut App, layout: Rect, idx: AnimeMapIdx) {
+    let idx = idx.to_usize();
     let layout = layout.pad_outer(DESCRIPTION_X_PAD_OUTER, DESCRIPTION_Y_PAD_OUTER);
     let (left_layout, right_layout) = layout.split_vert(1, 10);
     let (top_left_layout, _bottom_left_layout) = left_layout.split_hori(1, 11);

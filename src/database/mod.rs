@@ -115,6 +115,15 @@ impl From<SerializationError> for Err {
 
 type Result<T> = std::result::Result<T, Err>;
 
+#[derive(Debug, Clone, Copy)]
+pub struct AnimeMapIdx(pub usize);
+
+impl AnimeMapIdx {
+    pub fn to_usize(self) -> usize{
+        self.0
+    }
+}
+
 macro_rules! o_to_str {
     ($x: expr) => {
         $x.to_str().unwrap().to_string()
@@ -697,14 +706,14 @@ impl<'a> Database<'a> {
         unsafe { std::mem::transmute(self.cached_view.animes.as_mut_slice()) }
     }
 
-    pub fn cache_idx_to_map_idx(&self, idx: usize) -> usize {
+    pub fn cache_idx_to_map_idx(&self, idx: usize) -> AnimeMapIdx {
         let anime = &self.cached_view.animes[idx];
-        self.anime_map
+        AnimeMapIdx(self.anime_map
             .iter()
             .enumerate()
             .find(|(_, v)| (*v) as *const _ == (*anime) as *const _)
             .unwrap()
-            .0
+            .0)
     }
 
     pub fn get_idx(&self, idx: usize) -> &Anime {

@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use crate::database;
 use crate::database::episode::Episode;
+use crate::database::AnimeMapIdx;
 use crate::database::Database;
 use crate::send_request;
 use crate::App;
@@ -556,7 +557,7 @@ impl<'a> TextureManager<'a> {
 pub enum Screen {
     Main,
     Login,
-    SelectEpisode(usize),
+    SelectEpisode(AnimeMapIdx),
 }
 
 fn rgb_hex(hex: u32) -> (u8, u8, u8) {
