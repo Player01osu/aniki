@@ -9,6 +9,22 @@ use crate::{
 
 pub type HttpSender = mpsc::Sender<anyhow::Result<HttpData>>;
 
+pub fn get_anilist_media_list(tx: &HttpSender, user_id: u64, access_token: &str) {
+    let access_token = access_token.to_string();
+    send_request(
+        tx,
+        RequestKind::GetAnilistMediaList {
+            user_id,
+            access_token,
+        },
+    );
+}
+
+pub fn send_login(tx: &HttpSender, access_token: &str) {
+    let access_token = access_token.to_string();
+    send_request(tx, RequestKind::SendLogin { access_token });
+}
+
 #[derive(Debug)]
 pub enum RequestKind {
     GetAnilistMediaList {

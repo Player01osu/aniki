@@ -3,7 +3,8 @@ use sdl2::keyboard::Mod;
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::{rect, send_request, textbox, App, HttpSender, LoginProgress, RequestKind};
+use crate::http::{get_anilist_media_list, send_login};
+use crate::{rect, textbox, App, LoginProgress};
 
 use super::episode_screen::DESCRIPTION_FONT_INFO;
 use super::layout::Layout;
@@ -11,22 +12,6 @@ use super::{
     color_hex, draw_button, draw_text, draw_text_centered, text_size, Screen, Style,
     DEFAULT_BUTTON_FONT, H1_FONT_INFO, H2_FONT_INFO, INPUT_BOX_FONT_INFO,
 };
-
-pub fn get_anilist_media_list(tx: &HttpSender, user_id: u64, access_token: &str) {
-    let access_token = access_token.to_string();
-    send_request(
-        tx,
-        RequestKind::GetAnilistMediaList {
-            user_id,
-            access_token,
-        },
-    );
-}
-
-pub fn send_login(tx: &HttpSender, access_token: &str) {
-    let access_token = access_token.to_string();
-    send_request(tx, RequestKind::SendLogin { access_token });
-}
 
 pub fn draw_login(app: &mut App, layout: Rect) {
     if let Some(cred) = app.database.anilist_cred() {

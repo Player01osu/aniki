@@ -35,9 +35,8 @@ use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
 use ui::{color_hex, draw, BACKGROUND_COLOR};
 
-use crate::http::{poll_http, send_request, RequestKind};
+use crate::http::{get_anilist_media_list, poll_http, send_login, send_request, RequestKind};
 use crate::ui::layout::Layout;
-use crate::ui::login_screen::{get_anilist_media_list, send_login};
 use crate::ui::{INPUT_BOX_FONT_INFO, SCROLLBAR_COLOR};
 
 mod anilist_serde;

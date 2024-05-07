@@ -1,3 +1,8 @@
+pub mod layout;
+mod episode_screen;
+mod login_screen;
+mod main_screen;
+
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::ops::Sub;
@@ -43,11 +48,6 @@ use self::main_screen::CARD_WIDTH;
 use sdl2::image::ImageRWops;
 use sdl2::rect::Rect;
 use sdl2::rwops::RWops;
-
-pub mod episode_screen;
-pub mod layout;
-pub mod login_screen;
-pub mod main_screen;
 
 const DEBUG_COLOR: u32 = 0xFF0000;
 
