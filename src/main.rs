@@ -446,12 +446,19 @@ impl<'a> App<'a, '_> {
         ttf_ctx: &'a Sdl2TtfContext,
         texture_creator: &'a TextureCreator<WindowContext>,
         thumbnail_path: String,
-        event_pump: EventPump
+        event_pump: EventPump,
     ) -> Self {
         let (http_tx, http_rx) = mpsc::channel();
 
         Self {
-            context: Context::new(canvas, clipboard, input_util, ttf_ctx, texture_creator, event_pump),
+            context: Context::new(
+                canvas,
+                clipboard,
+                input_util,
+                ttf_ctx,
+                texture_creator,
+                event_pump,
+            ),
             database,
             next_screen: None,
             screen: Screen::Main,
@@ -506,7 +513,7 @@ impl<'a> App<'a, '_> {
 
     pub fn reset_frame_state(&mut self) {
         self.context.mouse_scroll_y_accel = self.context.mouse_scroll_y_accel
-            * self.frametime_frac()
+            //* self.frametime_frac()
             / self.context.weights.decel_decel;
         self.context.mouse_scroll_y =
             self.context.mouse_scroll_y * self.context.mouse_scroll_y_accel * 0.1
@@ -652,7 +659,7 @@ impl<'a> Context<'a, '_> {
         input_util: TextInputUtil,
         ttf_ctx: &'a Sdl2TtfContext,
         texture_creator: &'a TextureCreator<WindowContext>,
-        event_pump: EventPump
+        event_pump: EventPump,
     ) -> Self {
         Self {
             canvas,
@@ -764,15 +771,16 @@ impl<'a> Context<'a, '_> {
                 } => {
                     self.state_flag |= 8;
                 }
-                Event::MouseWheel {
-                    precise_y,
-                    ..
-                } => {
-                    if self.mouse_scroll_y.abs() <= 80.0 {
+                Event::MouseWheel { precise_y, .. } => {
+                    if true || self.mouse_scroll_y.abs() <= 100.0 {
                         self.mouse_scroll_y_accel += self.weights.accel_accel * 0.32;
                         self.mouse_scroll_y += precise_y.signum()
-                            * scroll_func((precise_y * self.weights.accel).abs())
+                            * scroll_func((precise_y * self.weights.accel).abs());
                     }
+                    self.mouse_scroll_y_accel = self.mouse_scroll_y_accel.signum()
+                        * (100.0f32).min(self.mouse_scroll_y_accel.abs());
+                    self.mouse_scroll_y =
+                        self.mouse_scroll_y.signum() * (100.0f32).min(self.mouse_scroll_y.abs());
                     //self.mouse_scroll_x += precise_x * 8.3 * app.frametime_frac();
                 }
                 Event::MouseMotion { x, y, .. } => {
@@ -806,7 +814,7 @@ impl<'a> Context<'a, '_> {
                 }
                 _ => {}
             }
-            return Some(true)
+            return Some(true);
         }
 
         Some(false)
@@ -1039,7 +1047,7 @@ async fn main() -> anyhow::Result<()> {
         &ttf_ctx,
         &texture_creator,
         thumbnail_path.to_string(),
-        event_pump
+        event_pump,
     );
 
     if let Some(cred) = app.database.anilist_cred() {
