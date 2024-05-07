@@ -46,10 +46,14 @@ mod database;
 mod http;
 mod ui;
 
-const MOUSE_CLICK_LEFT: u8 = 0x01;
-const MOUSE_CLICK_RIGHT: u8 = 0x02;
-const MOUSE_MOVED: u8 = 0x04;
-const RESIZED: u8 = 0x08;
+const MOUSE_MOVED: u8      = 1;
+const MOUSE_LEFT_UP: u8    = 2;
+const MOUSE_LEFT_DOWN: u8  = 4;
+const MOUSE_RIGHT_UP: u8   = 8;
+const MOUSE_RIGHT_DOWN: u8 = 16;
+const RESIZED: u8          = 32;
+const ID_UPDATED: u8       = 64;
+
 pub const CONNECTION_OVERLAY_TIMEOUT: f32 = 170.0;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
@@ -520,12 +524,10 @@ impl<'a> App<'a, '_> {
                 / self.context.weights.decel;
 
         if self.context.mouse_left_up() {
-            self.context.state_flag &= !(2 | 4);
             self.context.click_id = None;
         }
 
         if self.context.mouse_right_up() {
-            self.context.state_flag &= !(8 | 16);
             self.context.click_id = None;
         }
 
@@ -536,7 +538,7 @@ impl<'a> App<'a, '_> {
         self.context.keyset.clear();
         self.context.keyset_up.clear();
 
-        self.context.state_flag &= !(1 | 32);
+        self.context.state_flag = 0;
     }
 
     fn swap_screen(&mut self) {
@@ -713,31 +715,31 @@ impl<'a> Context<'a, '_> {
     }
 
     pub const fn mouse_moved(&self) -> bool {
-        self.state_flag & 1 != 0
+        self.state_flag & MOUSE_MOVED != 0
     }
 
     pub const fn mouse_left_up(&self) -> bool {
-        self.state_flag & 2 != 0
+        self.state_flag & MOUSE_LEFT_UP != 0
     }
 
     pub const fn mouse_left_down(&self) -> bool {
-        self.state_flag & 4 != 0
+        self.state_flag & MOUSE_LEFT_DOWN != 0
     }
 
     pub const fn mouse_right_up(&self) -> bool {
-        self.state_flag & 8 != 0
+        self.state_flag & MOUSE_RIGHT_UP != 0
     }
 
     pub const fn mouse_right_down(&self) -> bool {
-        self.state_flag & 16 != 0
+        self.state_flag & MOUSE_RIGHT_DOWN != 0
     }
 
     pub const fn resized(&self) -> bool {
-        self.state_flag & 32 != 0
+        self.state_flag & RESIZED != 0
     }
 
     pub const fn id_updated(&self) -> bool {
-        self.state_flag & 64 != 0
+        self.state_flag & ID_UPDATED != 0
     }
 
     fn poll_event(&mut self) -> Option<bool> {
@@ -917,7 +919,6 @@ impl<'a> Context<'a, '_> {
         for (_, selected) in self.id_map.iter_mut() {
             *selected = false;
         }
-        self.state_flag &= !64;
     }
 
     fn window_rect(&self) -> Rect {
