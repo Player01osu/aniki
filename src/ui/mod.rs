@@ -9,10 +9,11 @@ use crate::database::Database;
 use crate::send_request;
 use crate::App;
 use crate::ConnectionOverlayState;
+use crate::Context;
 use crate::HttpSender;
 use crate::RequestKind;
 use crate::CONNECTION_OVERLAY_TIMEOUT;
-use anyhow::Context;
+use anyhow::Context as _;
 use anyhow::Result;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadSurface;
@@ -645,16 +646,16 @@ fn draw_image_clip(
 }
 
 fn draw_image_float(
-    app: &mut App,
+    context: &mut Context,
     path: impl AsRef<str>,
     layout: Layout,
     padding: Option<(i32, i32)>,
     rounded: Option<i16>,
     gradient: Option<i32>,
 ) -> Result<()> {
-    app.context.canvas.set_blend_mode(BlendMode::Blend);
-    let texture = app.context.image_manager.load(
-        &mut app.context.canvas,
+    context.canvas.set_blend_mode(BlendMode::Blend);
+    let texture = context.image_manager.load(
+        &mut context.canvas,
         path,
         TextureOptions::new().rounded(rounded).gradient(gradient),
     )?;
@@ -689,8 +690,8 @@ fn draw_image_float(
             image_height,
         ),
     };
-    app.context.canvas.set_blend_mode(BlendMode::Blend);
-    app.context.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
+    context.canvas.set_blend_mode(BlendMode::Blend);
+    context.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 use sdl2::rect::Rect;
 use sdl2::{keyboard::Keycode, url::open_url};
 
-use crate::{database, register_scroll, Format, StringManager};
+use crate::{database, register_scroll, Format};
 use crate::database::episode::Episode;
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
@@ -171,7 +171,7 @@ fn draw_top_panel_anime_expand(app: &mut App, anime: &database::Anime, layout: R
             if let Ok((image_width, image_height)) = app.context.image_manager.query_size(&mut app.context.canvas, thumbnail) {
                 let (image_layout, description_layout) =
                     layout.split_vert(image_width * layout.height() / image_height, layout.width());
-                let _ = draw_image_float(app, thumbnail, image_layout, None, Some(THUMBNAIL_RAD), None);
+                let _ = draw_image_float(&mut app.context, thumbnail, image_layout, None, Some(THUMBNAIL_RAD), None);
                 description_layout.pad_outer(10, 10)
             } else {
                 let (image_width, image_height) = THUMBNAIL_MISSING_SIZE;
@@ -232,7 +232,7 @@ fn draw_episode(
             update_anilist_watched(&app.http_tx, &access_token, anime);
         }
     }
-    let _ = draw_image_float(app, PLAY_ICON, play_layout, Some((10, 0)), None, None);
+    let _ = draw_image_float(&mut app.context, PLAY_ICON, play_layout, Some((10, 0)), None, None);
     draw_text(
         &mut app.context.canvas,
         &mut app.context.text_manager,
