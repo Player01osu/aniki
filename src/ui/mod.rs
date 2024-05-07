@@ -232,7 +232,6 @@ pub struct TextManager<'a, 'b> {
 #[test]
 fn hex_color_test_0() {
     let as_hex = hex_color(color_hex(0xDEADBE));
-    println!("{:x}", as_hex);
     assert_eq!(0xDEADBE, as_hex);
 }
 
