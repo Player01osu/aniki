@@ -112,6 +112,7 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
             app.database.retrieve_images(&app.thumbnail_path).unwrap();
             app.main_state.search_anime = None;
             app.context.input_util.stop();
+            app.context.canvas.set_clip_rect(None);
             return;
         }
         if right {
