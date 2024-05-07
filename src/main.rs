@@ -222,6 +222,10 @@ pub struct Context<'a, 'b> {
     pub keymod: keyboard::Mod,
 }
 
+pub struct ScreenStates {}
+
+pub struct Scheduler {}
+
 pub struct App<'a, 'b> {
     pub context: Context<'a, 'b>,
     pub next_screen: Option<Screen>,
