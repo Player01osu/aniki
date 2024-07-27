@@ -48,13 +48,13 @@ use crate::http::{get_anilist_media_list, poll_http, send_login, send_request, R
 use crate::ui::layout::Layout;
 use crate::ui::{INPUT_BOX_FONT_INFO, SCROLLBAR_COLOR};
 
-const MOUSE_MOVED: u8      = 1;
-const MOUSE_LEFT_UP: u8    = 2;
-const MOUSE_LEFT_DOWN: u8  = 4;
-const MOUSE_RIGHT_UP: u8   = 8;
-const MOUSE_RIGHT_DOWN: u8 = 16;
-const RESIZED: u8          = 32;
-const ID_UPDATED: u8       = 64;
+const MOUSE_MOVED: u8      = 1 << 0;
+const MOUSE_LEFT_UP: u8    = 1 << 1;
+const MOUSE_LEFT_DOWN: u8  = 1 << 2;
+const MOUSE_RIGHT_UP: u8   = 1 << 3;
+const MOUSE_RIGHT_DOWN: u8 = 1 << 4;
+const RESIZED: u8          = 1 << 5;
+const ID_UPDATED: u8       = 1 << 6;
 
 pub const CONNECTION_OVERLAY_TIMEOUT: f32 = 170.0;
 pub const DEFAULT_VIDEO_PLAYER: &str = "mpv";
