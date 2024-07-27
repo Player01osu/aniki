@@ -102,6 +102,12 @@ pub fn send_request(tx: &mpsc::Sender<anyhow::Result<HttpData>>, request: Reques
                 );
                 tx.send(Ok(data)).map_err(send_err)
             }
+            // TODO: If the same episode is pressed, the `last_watched` is updateed
+            // locally, but the `updatedAt` is not updated in anilist.
+            //
+            // This causes unnecessary requests to anilist everytime the aniki is opened.
+            //
+            // Maybe have a dirty bit on every anime entry that is cleared by this?
             RequestKind::UpdateMedia {
                 access_token,
                 media_id,
@@ -182,14 +188,18 @@ pub fn poll_http(app: &mut App) {
                 }
             },
             HttpData::UpdateMedia(anime_ptr, entry) => {
-                let anime = app
+                eprintln!("Update media request received... {}", entry.id());
+                if let Some(anime) = app
                     .database
-                    .animes()
+                    .anime_map()
                     .iter_mut()
-                    .find(|v| v.as_ptr_id() == anime_ptr)
-                    .unwrap();
-                if entry.updated_at() > anime.last_watched() {
-                    anime.set_last_watched(entry.updated_at());
+                    .find(|v| v.as_ptr_id() == anime_ptr) {
+                    if entry.updated_at() > anime.last_watched() {
+                        eprintln!("Updated \"{}\"...", anime.title());
+                        anime.set_last_watched(entry.updated_at());
+                    }
+                } else {
+                    eprintln!("Failed to update {}", entry.id());
                 }
             }
             HttpData::Debug(v) => {

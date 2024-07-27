@@ -1,5 +1,6 @@
-pub mod layout;
+mod attach_flag_screen;
 mod episode_screen;
+pub mod layout;
 mod login_screen;
 mod main_screen;
 
@@ -14,11 +15,14 @@ use crate::database::AnimeMapIdx;
 use crate::database::Database;
 use crate::send_request;
 use crate::App;
+use crate::BindFlag;
 use crate::ConnectionOverlayState;
 use crate::Context;
 use crate::HttpSender;
 use crate::RequestKind;
+use crate::SingleFlag;
 use crate::CONNECTION_OVERLAY_TIMEOUT;
+use crate::DEFAULT_VIDEO_PLAYER;
 use anyhow::Context as _;
 use anyhow::Result;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -37,6 +41,7 @@ use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::Window;
 use sdl2::video::WindowContext;
 
+use self::attach_flag_screen::draw_attach_flag;
 use self::episode_screen::draw_anime_expand;
 use self::episode_screen::DESCRIPTION_FONT_INFO;
 use self::layout::Layout as _;
@@ -557,6 +562,7 @@ pub enum Screen {
     Main,
     Login,
     SelectEpisode(AnimeMapIdx),
+    AttachFlag(AnimeMapIdx),
 }
 
 fn rgb_hex(hex: u32) -> (u8, u8, u8) {
@@ -590,6 +596,7 @@ pub fn update_anilist_watched(tx: &HttpSender, access_token: &str, anime: &mut d
             let access_token = access_token.to_string();
             let ptr_id = anime.as_ptr_id();
             let access_token = access_token.to_string();
+            dbg!(anime.title());
             send_request(
                 tx,
                 RequestKind::UpdateMedia {
@@ -635,7 +642,8 @@ fn draw_image_clip(
     image_height = (image_height as f32 / scaling) as u32;
 
     app.context.canvas.set_blend_mode(BlendMode::Blend);
-    app.context.canvas
+    app.context
+        .canvas
         .copy(
             &texture,
             None,
@@ -691,7 +699,10 @@ fn draw_image_float(
         ),
     };
     context.canvas.set_blend_mode(BlendMode::Blend);
-    context.canvas.copy(&texture, None, Some(dest_rect)).unwrap();
+    context
+        .canvas
+        .copy(&texture, None, Some(dest_rect))
+        .unwrap();
     Ok(())
 }
 
@@ -790,25 +801,26 @@ impl Style {
 }
 
 /// Returns whether the button has been clicked
-fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool {
-    let button_id = app.context.create_id(layout);
+fn draw_button(context: &mut Context, text: &str, style: Style, layout: Layout) -> bool {
+    let button_id = context.create_id(layout);
     let button_rect = layout;
-    let (text_width, _text_height) = text_size(&mut app.context.text_manager, style.font_info, text);
+    let (text_width, _text_height) = text_size(&mut context.text_manager, style.font_info, text);
     let text = if text_width > layout.width() {
         format!("{}...", text.split_at(15).0)
     } else {
         text.to_owned()
     };
 
-    let (button_fg_color, button_bg_color) = if app.context.state_id(button_id) {
+    let (button_fg_color, button_bg_color) = if context.state_id(button_id) {
         (style.fg_hover_color, style.bg_hover_color)
     } else {
         (style.fg_color, style.bg_color)
     };
-    app.context.canvas.set_draw_color(button_bg_color);
+    context.canvas.set_draw_color(button_bg_color);
     match style.round {
         Some(round) => {
-            app.context.canvas
+            context
+                .canvas
                 .rounded_box(
                     button_rect.left() as i16,
                     button_rect.top() as i16,
@@ -820,13 +832,13 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
                 .unwrap();
         }
         None => {
-            app.context.canvas.fill_rect(button_rect).unwrap();
+            context.canvas.fill_rect(button_rect).unwrap();
         }
     }
 
     draw_text_centered(
-        &mut app.context.canvas,
-        &mut app.context.text_manager,
+        &mut context.canvas,
+        &mut context.text_manager,
         style.font_info,
         text,
         button_fg_color,
@@ -836,14 +848,14 @@ fn draw_button(app: &mut App, text: &str, style: Style, layout: Layout) -> bool 
         None,
     );
 
-    app.context.click_elem(button_id)
+    context.click_elem(button_id)
 }
 
 fn draw_back_button(app: &mut App, screen: Screen, layout: Layout) {
     let style = Style::new(color_hex(0x9A9A9A), color_hex(0x2A2A2A))
         .bg_hover_color(color_hex(0x4A4A4A))
         .font_info(BACK_BUTTON_FONT_INFO);
-    if draw_button(app, "Back", style, layout) {
+    if draw_button(&mut app.context, "Back", style, layout) {
         app.next_screen = Some(screen);
     }
 }
@@ -852,7 +864,8 @@ pub fn draw_missing_thumbnail(app: &mut App, layout: Layout, rounded: Option<i16
     let bg_color = color_hex(0x9A9A9A);
     if let Some(rounded) = rounded {
         let rect = layout;
-        app.context.canvas
+        app.context
+            .canvas
             .rounded_box(
                 rect.left() as i16,
                 rect.top() as i16,
@@ -948,7 +961,12 @@ fn draw_toolbar(app: &mut App, layout: Layout) {
         let login_width = login_width + toolbar_button_side_pad;
         let (layout, login_button_layout) =
             layout.split_vert(layout.width() - login_width, layout.width());
-        if draw_button(app, text, toolbar_button_style, login_button_layout) {
+        if draw_button(
+            &mut app.context,
+            text,
+            toolbar_button_style,
+            login_button_layout,
+        ) {
             match app.connection_overlay.state {
                 ConnectionOverlayState::Disconnected => {
                     app.next_screen = Some(Screen::Login);
@@ -987,6 +1005,9 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
             // Anime reference will never get changed while drawing frame
             draw_anime_expand(app, layout, *idx);
         }
+        Screen::AttachFlag(idx) => {
+            draw_attach_flag(app, layout, *idx);
+        }
     }
 
     app.connection_overlay.timeout = app
@@ -1010,6 +1031,51 @@ pub fn draw<'frame>(app: &mut App, screen: &mut Screen) {
     }
 
     if let Some(next_screen) = app.next_screen.take() {
+        match next_screen {
+            Screen::AttachFlag(idx) => {
+                let anime = app.database.get_idx(idx);
+                let state = &mut app.attach_flag_state;
+                state.video_player_textbox.cursor_location = 0;
+                state.video_player_textbox.text.clear();
+                state.single_flags.clear();
+                state.regex_textbox.cursor_location = 0;
+                state.regex_textbox.text.clear();
+                state.bind_flags.clear();
+
+                state.video_player_textbox.cursor_location = DEFAULT_VIDEO_PLAYER.len();
+                state.video_player_textbox.text = anime
+                    .video_player
+                    .clone()
+                    .unwrap_or(DEFAULT_VIDEO_PLAYER.to_string());
+                state.regex_textbox.cursor_location = anime.pair_flags.video_regex.len();
+                state.regex_textbox.text = anime.pair_flags.video_regex.clone();
+
+                for flag in &anime.single_flags {
+                    let mut single_flag = SingleFlag::default();
+                    single_flag.switch.toggled = flag.enabled;
+                    single_flag.textbox.cursor_location = flag.flag.len();
+                    single_flag.textbox.text = flag.flag.clone();
+                    state.single_flags.push(single_flag);
+                }
+
+                state.bind_flags_switch.toggled = anime.pair_flags.enabled;
+                for flag in &anime.pair_flags.pair_flags {
+                    let mut bind_flag = BindFlag::default();
+                    bind_flag.switch.toggled = flag.enabled;
+                    bind_flag.deliminator_switch.toggled = flag.use_deliminator;
+                    bind_flag.search_path_textbox.cursor_location = flag.search_path.len();
+                    bind_flag.search_path_textbox.text = flag.search_path.clone();
+                    bind_flag.flag_textbox.cursor_location = flag.flag.len();
+                    bind_flag.flag_textbox.text = flag.flag.clone();
+                    bind_flag.regex_textbox.cursor_location = flag.regex.len();
+                    bind_flag.regex_textbox.text = flag.regex.clone();
+                    bind_flag.deliminator_textbox.cursor_location = flag.deliminator.len();
+                    bind_flag.deliminator_textbox.text = flag.deliminator.clone();
+                    state.bind_flags.push(bind_flag);
+                }
+            }
+            _ => (),
+        }
         for (rect, selected) in app.context.id_map.iter_mut().rev() {
             if *selected {
                 *rect = Rect::new(0, 0, 0, 0);

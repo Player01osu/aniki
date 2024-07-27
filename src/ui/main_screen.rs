@@ -1,10 +1,7 @@
 use sdl2::gfx::primitives::DrawRenderer;
+use sdl2::keyboard::{self, Keycode, Mod};
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
-use sdl2::{
-    keyboard::{self, Keycode},
-    url::open_url,
-};
 
 use crate::database::json_database::AnimeDatabaseData;
 use crate::{
@@ -12,11 +9,13 @@ use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
 };
-use crate::{rect, register_scroll, textbox, Format};
+use crate::{open_video, rect, register_scroll, textbox, update_watched, Format};
 
 use super::layout::Layout as _;
 use super::{
-    color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered, text_size, update_anilist_watched, Screen, Style, TextureOptions, INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL, PLAY_BUTTON_FONT_INFO, TITLE_FONT_COLOR, TITLE_FONT_INFO
+    color_hex_a, draw_button, draw_image_clip, draw_missing_thumbnail, draw_text_centered,
+    text_size, Screen, Style, TextureOptions, INPUT_BOX_FONT_INFO, MISSING_THUMBNAIL,
+    PLAY_BUTTON_FONT_INFO, TITLE_FONT_COLOR, TITLE_FONT_INFO,
 };
 
 pub const CARD_RAD: i16 = 10;
@@ -62,7 +61,10 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     let outer_bounds_id = app.context.create_id(app.context.window_rect());
     let _inner_bounds_id = app.context.create_id(layout);
     let layout_y = layout.y();
-    let (_, text_height) = app.context.text_manager.text_size(BACK_BUTTON_FONT_INFO, "");
+    let (_, text_height) = app
+        .context
+        .text_manager
+        .text_size(BACK_BUTTON_FONT_INFO, "");
     let textbox_state = &mut app.title_popup_state.textbox;
 
     app.context.canvas.set_draw_color(color_hex(0x303030));
@@ -73,7 +75,14 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
     app.context.canvas.fill_rect(layout).unwrap();
 
     let mut layout = layout.pad_top(10).pad_bottom(5);
-    textbox(&mut app.context, textbox_state, true, 10, &mut layout);
+    textbox(
+        &mut app.context,
+        textbox_state,
+        Some("Search Anime:"),
+        true,
+        10,
+        &mut layout,
+    );
     let scroll = &mut app.title_popup_state.scroll;
     register_scroll(&mut app.context, scroll, &mut layout);
     let anime = &mut app.database.animes()[search_id as usize];
@@ -86,10 +95,8 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
             Some(prev) if prev.0 == textbox.text => &prev.1,
             _ => {
                 let animes = app.database.fuzzy_find_anime(&textbox.text);
-                let animes_cast: Box<[*const _]> = animes
-                    .iter()
-                    .map(|v| (*v) as *const _)
-                    .collect();
+                let animes_cast: Box<[*const _]> =
+                    animes.iter().map(|v| (*v) as *const _).collect();
                 let (_, search) =
                     search_previous.insert((textbox.text.clone(), animes_cast.clone()));
                 search
@@ -97,28 +104,45 @@ fn draw_main_anime_search(app: &mut App, layout: Layout, search_id: u32) {
         }
     };
     let option_layout = layout;
-    let option_layouts = option_layout.split_even_hori(text_height + 20);
+    let mut option_layouts = option_layout.split_even_hori(text_height + 20);
 
     app.title_popup_state.scroll.max_scroll = 0;
-    for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
+    if options.is_empty() {
         app.title_popup_state.scroll.max_scroll = layout.y() as i32 - layout_y;
-        let layout = layout.scroll_y(app.title_popup_state.scroll.scroll);
-        let option = unsafe { &**option };
+        let layout = option_layouts
+            .next()
+            .unwrap()
+            .scroll_y(app.title_popup_state.scroll.scroll);
         let option_id = app.context.create_id(layout);
         app.context.canvas.set_clip_rect(option_layout);
-        let (left, right) = draw_option(app, option_id, &option.title());
+        let (left, _) = draw_option(app, option_id, "[Remove anime tracking]");
         if left {
-            anime.set_metadata(Some((*option).clone()));
-            app.database.retrieve_images(&app.thumbnail_path).unwrap();
-            app.main_state.search_anime = None;
-            app.context.input_util.stop();
+            anime.set_metadata(None);
             app.context.canvas.set_clip_rect(None);
+            app.main_state.search_anime = None;
             return;
         }
-        if right {
-            let title = &option.title;
-            app.title_popup_state.textbox.text = title.to_owned();
-            app.title_popup_state.textbox.cursor_location = title.len();
+    } else {
+        for (layout, option) in option_layouts.into_iter().zip(options.into_iter()) {
+            app.title_popup_state.scroll.max_scroll = layout.y() as i32 - layout_y;
+            let layout = layout.scroll_y(app.title_popup_state.scroll.scroll);
+            let option = unsafe { &**option };
+            let option_id = app.context.create_id(layout);
+            app.context.canvas.set_clip_rect(option_layout);
+            let (left, right) = draw_option(app, option_id, &option.title());
+            if left {
+                anime.set_metadata(Some((*option).clone()));
+                app.database.retrieve_images(&app.thumbnail_path).unwrap();
+                app.main_state.search_anime = None;
+                app.context.input_util.stop();
+                app.context.canvas.set_clip_rect(None);
+                return;
+            }
+            if right {
+                let title = &option.title;
+                app.title_popup_state.textbox.text = title.to_owned();
+                app.title_popup_state.textbox.cursor_location = title.len();
+            }
         }
     }
 
@@ -135,10 +159,7 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     let _inner_bounds_id = app.context.create_id(layout);
     let layout_y = layout.y();
     let anime = &mut app.database.animes()[alias_id as usize];
-    let text_height = app
-        .context
-        .text_manager
-        .font_height(BACK_BUTTON_FONT_INFO);
+    let text_height = app.context.text_manager.font_height(BACK_BUTTON_FONT_INFO);
 
     app.context.canvas.set_draw_color(color_hex(0x303030));
     app.context.canvas.fill_rect(layout).unwrap();
@@ -149,7 +170,14 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
 
     let mut layout = layout.pad_top(10);
     let textbox_state = &mut app.alias_popup_state.textbox;
-    textbox(&mut app.context, textbox_state, true, 10, &mut layout);
+    textbox(
+        &mut app.context,
+        textbox_state,
+        Some("Alias Title:"),
+        true,
+        10,
+        &mut layout,
+    );
     let scroll = &mut app.alias_popup_state.scroll;
     register_scroll(&mut app.context, scroll, &mut layout);
     let option_layout = layout;
@@ -187,6 +215,7 @@ fn draw_main_anime_alias(app: &mut App, layout: Layout, alias_id: u32) {
     }
 
     if app.keydown(Keycode::Return) {
+        anime.set_alias(app.alias_popup_state.textbox.text.clone());
         app.main_state.alias_anime = None;
         app.context.input_util.stop();
     }
@@ -238,7 +267,10 @@ fn draw_option(app: &mut App, option_id: usize, option: &str) -> (bool, bool) {
         );
     }
 
-    (app.context.click_elem(option_id), app.context.click_elem_right(option_id))
+    (
+        app.context.click_elem(option_id),
+        app.context.click_elem_right(option_id),
+    )
 }
 
 pub fn draw_main(app: &mut App, layout: Layout) {
@@ -320,7 +352,10 @@ pub fn draw_gradient(app: &mut App, layout: Layout, rounded: Option<i16>, gradie
         .unwrap();
 
     app.context.canvas.set_blend_mode(BlendMode::Blend);
-    app.context.canvas.copy(texture.as_ref(), None, layout).unwrap();
+    app.context
+        .canvas
+        .copy(texture.as_ref(), None, layout)
+        .unwrap();
 }
 
 fn draw_thumbnail(app: &mut App, anime: &database::Anime, layout: Layout) {
@@ -371,7 +406,7 @@ fn draw_card_extra_menu(
         .font_info(PLAY_BUTTON_FONT_INFO);
 
     if draw_button(
-        app,
+        &mut app.context,
         "Change title",
         menu_button_style.clone(),
         change_title_layout,
@@ -382,7 +417,7 @@ fn draw_card_extra_menu(
     }
 
     if draw_button(
-        app,
+        &mut app.context,
         "Alias title",
         menu_button_style.clone(),
         alias_title_layout,
@@ -394,7 +429,7 @@ fn draw_card_extra_menu(
     }
 
     if draw_button(
-        app,
+        &mut app.context,
         "Change image",
         menu_button_style.clone(),
         change_image_layout,
@@ -410,13 +445,14 @@ fn draw_card_extra_menu(
     }
 
     if draw_button(
-        app,
+        &mut app.context,
         "Attach Flags",
         menu_button_style.clone(),
         attach_flag_layout,
     ) {
         clicked = true;
-        eprintln!("Attach flags clicked!");
+        let idx = app.database.cache_idx_to_map_idx(idx);
+        app.next_screen = Some(Screen::AttachFlag(idx));
     }
     app.context.canvas.set_clip_rect(None);
     clicked
@@ -439,36 +475,35 @@ fn draw_card_hover_menu(app: &mut App, anime: &mut database::Anime, layout: Layo
     let (current_ep, current_path) = anime.current_episode_path();
 
     if draw_button(
-        app,
+        &mut app.context,
         &format!("Play Current: {}", current_ep),
         play_button_style.clone(),
         play_current_layout,
     ) {
         clicked = true;
-        open_url(&current_path[0]).unwrap();
-        anime.update_watched(current_ep.clone()).unwrap();
+        open_video(&current_path[0], anime);
 
-        if let Some(access_token) = app.database.anilist_access_token() {
-            update_anilist_watched(&app.http_tx, access_token, anime);
+        if !app.context.keymod.contains(Mod::LSHIFTMOD) {
+            let access_token = app.database.anilist_access_token().map(|v| v.to_string());
+            update_watched(&app.http_tx, access_token, anime, &current_ep);
+            app.main_state.scroll.scroll = 0;
         }
-
-        app.main_state.scroll.scroll = 0;
     }
 
     if let Some((ep, path)) = anime.next_episode_path().unwrap() {
         if draw_button(
-            app,
+            &mut app.context,
             &format!("Play Next: {}", ep),
             play_button_style.clone(),
             play_next_layout,
         ) {
             clicked = true;
-            open_url(&path[0]).unwrap();
-            anime.update_watched(ep).unwrap();
-            app.main_state.scroll.scroll = 0;
+            open_video(&path[0], anime);
 
-            if let Some(access_token) = app.database.anilist_access_token() {
-                update_anilist_watched(&app.http_tx, access_token, anime);
+            if !app.context.keymod.contains(Mod::LSHIFTMOD) {
+                let access_token = app.database.anilist_access_token().map(|v| v.to_string());
+                update_watched(&app.http_tx, access_token, anime, &ep);
+                app.main_state.scroll.scroll = 0;
             }
         }
     }
@@ -559,7 +594,8 @@ fn draw_card(app: &mut App, anime: &mut database::Anime, idx: usize, layout: Lay
         selected = true;
         let image_hover_color = color_hex_a(0x1010108B);
         let image_rect = image_layout;
-        app.context.canvas
+        app.context
+            .canvas
             .rounded_box(
                 image_rect.left() as i16,
                 image_rect.top() as i16,

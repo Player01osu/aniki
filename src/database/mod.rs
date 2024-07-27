@@ -20,6 +20,29 @@ use crate::anilist_serde::{Collection, Media, MediaEntry};
 use self::json_database::{AnimeDatabaseData, JsonIndexed};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SingleVideoPlayerFlag {
+    pub enabled: bool,
+    pub flag: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairVideoPlayerFlags {
+    pub enabled: bool,
+    pub video_regex: String,
+    pub pair_flags: Vec<PairFlag>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairFlag {
+    pub enabled: bool,
+    pub search_path: String,
+    pub flag: String,
+    pub use_deliminator: bool,
+    pub deliminator: String,
+    pub regex: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anime {
     filename: String,
     paths: Box<[String]>,
@@ -30,6 +53,10 @@ pub struct Anime {
 
     thumbnail: Option<String>,
     alias: Option<String>,
+
+    pub video_player: Option<String>,
+    pub single_flags: Vec<SingleVideoPlayerFlag>,
+    pub pair_flags: PairVideoPlayerFlags,
 
     // From JSON Database
     metadata: Option<AnimeDatabaseData>,
@@ -124,6 +151,7 @@ impl AnimeMapIdx {
     }
 }
 
+#[macro_export]
 macro_rules! o_to_str {
     ($x: expr) => {
         $x.to_str().unwrap().to_string()
@@ -164,6 +192,13 @@ impl Anime {
             episodes: Vec::new(),
             thumbnail: None,
             alias: None,
+            single_flags: vec![],
+            pair_flags: PairVideoPlayerFlags {
+                enabled: false,
+                video_regex: String::new(),
+                pair_flags: vec![],
+            },
+            video_player: None,
             metadata,
         };
         anime.update_episodes();
@@ -217,7 +252,7 @@ impl Anime {
     }
 
     pub fn as_ptr_id(&self) -> u64 {
-        (self as *const Anime) as u64
+        self.filename.as_ptr() as u64
     }
 
     fn set_progress(&mut self, progress: u32) {
@@ -689,6 +724,10 @@ impl<'a> Database<'a> {
         Ok(())
     }
 
+    pub fn anime_map(&mut self) -> &mut [Anime] {
+        self.anime_map.as_mut_slice()
+    }
+
     pub fn animes<'frame>(&mut self) -> &'frame mut [&'frame mut Anime] {
         if self
             .cached_view
@@ -716,12 +755,12 @@ impl<'a> Database<'a> {
             .0)
     }
 
-    pub fn get_idx(&self, idx: usize) -> &Anime {
-        &self.anime_map[idx]
+    pub fn get_idx(&self, idx: AnimeMapIdx) -> &Anime {
+        &self.anime_map[idx.to_usize()]
     }
 
-    pub fn get_mut_idx(&mut self, idx: usize) -> &mut Anime {
-        &mut self.anime_map[idx]
+    pub fn get_mut_idx(&mut self, idx: AnimeMapIdx) -> &mut Anime {
+        &mut self.anime_map[idx.to_usize()]
     }
 
     pub fn get_anime<'b>(&mut self, anime: impl AsRef<str>) -> Option<&'b mut Anime> {

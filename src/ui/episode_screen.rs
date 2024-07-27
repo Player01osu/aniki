@@ -1,9 +1,9 @@
+use sdl2::keyboard::{Keycode, Mod};
 use sdl2::rect::Rect;
-use sdl2::{keyboard::Keycode, url::open_url};
 
 use crate::database::episode::Episode;
 use crate::database::AnimeMapIdx;
-use crate::{database, register_scroll, Context, Format};
+use crate::{database, open_video, register_scroll, update_watched, Context, Format};
 use crate::{
     ui::{color_hex, draw_text, BACK_BUTTON_FONT_INFO},
     App,
@@ -12,7 +12,7 @@ use crate::{
 use super::layout::Layout;
 use super::{
     draw_back_button, draw_image_float, draw_missing_thumbnail, draw_text_centered,
-    update_anilist_watched, Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, THUMBNAIL_MISSING_SIZE,
+    Screen, H1_FONT_INFO, H2_FONT_INFO, PLAY_ICON, THUMBNAIL_MISSING_SIZE,
     TITLE_FONT, TITLE_FONT_COLOR,
 };
 
@@ -28,7 +28,7 @@ pub const DIRECTORY_NAME_FONT_COLOR: u32 = 0x404040;
 
 const THUMBNAIL_RAD: i16 = 6;
 
-fn draw_episode_list(app: &mut App, idx: usize, mut layout: Rect) {
+fn draw_episode_list(app: &mut App, idx: AnimeMapIdx, mut layout: Rect) {
     app.context.canvas.set_clip_rect(layout);
     let episode_height = 70;
     let episode_count = {
@@ -88,10 +88,10 @@ fn draw_episode_list(app: &mut App, idx: usize, mut layout: Rect) {
         let anime = app.database.get_idx(idx);
         anime.episodes()
     };
-    for (idx, (episode_layout, (episode, _))) in layout_iter.zip(episode_map).enumerate() {
+    for (i, (episode_layout, (episode, _))) in layout_iter.zip(episode_map).enumerate() {
         let episode_str = app.context.string_manager.load(
             app.database.get_idx(idx).filename().as_ptr(),
-            Format::Episode(idx as u8),
+            Format::Episode(i as u8),
             || format!("{episode}"),
         );
         draw_episode(
@@ -107,7 +107,6 @@ fn draw_episode_list(app: &mut App, idx: usize, mut layout: Rect) {
 }
 
 pub fn draw_anime_expand(app: &mut App, layout: Rect, idx: AnimeMapIdx) {
-    let idx = idx.to_usize();
     let layout = layout.pad_outer(DESCRIPTION_X_PAD_OUTER, DESCRIPTION_Y_PAD_OUTER);
     let (left_layout, right_layout) = layout.split_vert(1, 10);
     let (top_left_layout, _bottom_left_layout) = left_layout.split_hori(1, 11);
@@ -183,7 +182,7 @@ fn draw_top_panel_with_metadata(context: &mut Context, anime: &database::Anime, 
     context.canvas.set_clip_rect(None);
 }
 
-fn draw_top_panel_anime_expand(app: &mut App, idx: usize, layout: Rect) {
+fn draw_top_panel_anime_expand(app: &mut App, idx: AnimeMapIdx, layout: Rect) {
     let description_layout = match app.database.get_idx(idx).thumbnail() {
         Some(thumbnail) => {
             if let Ok((image_width, image_height)) = app
@@ -228,7 +227,7 @@ fn draw_top_panel_anime_expand(app: &mut App, idx: usize, layout: Rect) {
 
 fn draw_episode(
     app: &mut App,
-    idx: usize,
+    idx: AnimeMapIdx,
     text: &str,
     episode: Episode,
     layout: Rect,
@@ -254,15 +253,15 @@ fn draw_episode(
     if app.context.click_elem(id) {
         {
             let anime = app.database.get_mut_idx(idx);
-            anime.update_watched(episode.to_owned()).unwrap();
             let paths = anime.find_episode_path(&episode);
-            app.episode_state.episode_scroll.scroll = 0;
-            open_url(&paths[0]).unwrap();
+            open_video(&paths[0], anime);
         }
 
-        if let Some(access_token) = app.database.anilist_access_token() {
-            let access_token = access_token.to_owned();
-            update_anilist_watched(&app.http_tx, &access_token, app.database.get_mut_idx(idx));
+        if !app.context.keymod.contains(Mod::LSHIFTMOD) {
+            let access_token = app.database.anilist_access_token().map(|v| v.to_string());
+            let anime = app.database.get_mut_idx(idx);
+            update_watched(&app.http_tx, access_token, anime, &episode);
+            app.episode_state.episode_scroll.scroll = 0;
         }
     }
     let _ = draw_image_float(

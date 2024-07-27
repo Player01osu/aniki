@@ -73,21 +73,22 @@ pub fn draw_login(app: &mut App, layout: Rect) {
     let (input_box_title_layout, mut rest) = rest.split_hori(input_text_height, rest.height());
     let input_box_title_layout = input_box_title_layout.pad_left(130).pad_right(130);
 
-    draw_text(
-        &mut app.context.canvas,
-        &mut app.context.text_manager,
-        INPUT_BOX_FONT_INFO,
-        "Access Token:",
-        color_hex(0x7C7C7C),
-        input_box_title_layout.x,
-        input_box_title_layout.y,
-        None,
-        None,
-    );
+    //draw_text(
+    //    &mut app.context.canvas,
+    //    &mut app.context.text_manager,
+    //    INPUT_BOX_FONT_INFO,
+    //    "Access Token:",
+    //    color_hex(0x7C7C7C),
+    //    input_box_title_layout.x,
+    //    input_box_title_layout.y,
+    //    None,
+    //    None,
+    //);
 
     let input_box_submit = textbox(
         &mut app.context,
         &mut app.login_state.textbox,
+        Some("Access Token:"),
         true,
         130,
         &mut rest,
@@ -128,14 +129,14 @@ pub fn draw_login(app: &mut App, layout: Rect) {
     let skip_button_style = Style::new(color_hex(0x909090), color_hex(0x222222))
         .bg_hover_color(color_hex(0x444444))
         .font_info(button_font_info);
-    if draw_button(app, "Submit", submit_button_style, submit_button_layout) || input_box_submit {
+    if draw_button(&mut app.context, "Submit", submit_button_style, submit_button_layout) || input_box_submit {
         app.login_progress = LoginProgress::Started;
         let access_token = &app.login_state.textbox.text;
         send_login(&app.http_tx, access_token);
     }
 
     // draw skip login button
-    if draw_button(app, "Skip Login", skip_button_style, skip_button_layout) {
+    if draw_button(&mut app.context, "Skip Login", skip_button_style, skip_button_layout) {
         app.database.skip_login_set(true);
         app.next_screen = Some(Screen::Main);
     }

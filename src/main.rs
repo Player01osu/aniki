@@ -8,10 +8,12 @@ mod http;
 mod ui;
 
 use config::Config;
+use database::episode::Episode;
 use database::json_database::AnimeDatabaseData;
-use database::Database;
+use database::{Anime, Database};
 use http::{HttpData, HttpSender};
 use lexopt::prelude::*;
+use regex::Regex;
 use sdl2::clipboard::ClipboardUtil;
 use sdl2::keyboard::TextInputUtil;
 use sdl2::keyboard::{self, Mod};
@@ -31,16 +33,16 @@ use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::ops::Sub;
 use std::path::Path;
-use std::rc::Rc;
+use std::process::Command;
 use std::sync::mpsc;
 use std::time::Duration;
-use ui::FontManager;
 use ui::Screen;
 use ui::TextManager;
 use ui::TextureManager;
 use ui::WINDOW_HEIGHT;
 use ui::WINDOW_WIDTH;
 use ui::{color_hex, draw, BACKGROUND_COLOR};
+use ui::{update_anilist_watched, FontManager};
 
 use crate::http::{get_anilist_media_list, poll_http, send_login, send_request, RequestKind};
 use crate::ui::layout::Layout;
@@ -55,6 +57,7 @@ const RESIZED: u8          = 32;
 const ID_UPDATED: u8       = 64;
 
 pub const CONNECTION_OVERLAY_TIMEOUT: f32 = 170.0;
+pub const DEFAULT_VIDEO_PLAYER: &str = "mpv";
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Format {
@@ -106,6 +109,34 @@ pub struct ConnectionOverlay {
 pub enum ConnectionOverlayState {
     Connected,
     Disconnected,
+}
+
+#[derive(Debug, Default)]
+pub struct SingleFlag {
+    switch: Switch,
+    textbox: Textbox,
+}
+
+#[derive(Debug, Default)]
+pub struct BindFlag {
+    switch: Switch,
+    search_path_textbox: Textbox,
+    flag_textbox: Textbox,
+    deliminator_switch: Switch,
+    deliminator_textbox: Textbox,
+    regex_textbox: Textbox,
+}
+
+#[derive(Debug, Default)]
+pub struct AttachFlagState {
+    video_player_switch: Switch,
+    video_player_textbox: Textbox,
+    single_flags: Vec<SingleFlag>,
+    bind_flags_switch: Switch,
+    regex_textbox: Textbox,
+    bind_flags: Vec<BindFlag>,
+    scroll: Scroll,
+    selectable: BTreeSet<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -246,28 +277,198 @@ pub struct App<'a, 'b> {
     pub main_state: MainState,
     pub episode_state: EpisodeState,
     pub login_state: LoginState,
+    pub attach_flag_state: AttachFlagState,
 
     pub alias_popup_state: AliasPopupState,
     pub title_popup_state: TitlePopupState,
 }
 
+//pub fn update_watched(app: &mut App, anime: &mut Anime, ep: &Episode) {
+pub fn update_watched(
+    tx: &HttpSender,
+    access_token: Option<String>,
+    anime: &mut Anime,
+    ep: &Episode,
+) {
+    anime.update_watched(ep.clone()).unwrap();
+    if let Some(access_token) = access_token {
+        update_anilist_watched(tx, &access_token, anime);
+    }
+}
+
+fn get_search_path(s: &str, anime_paths: &[String]) -> Option<String> {
+    if s.chars().next() == Some('/') {
+        Some(s.to_string())
+    } else {
+        for p in anime_paths {
+            let path = format!("{p}/{s}");
+            if Path::new(&path).is_dir() {
+                return Some(path);
+            }
+        }
+        return None;
+    }
+}
+
+fn get_captures(s: &str, regex: &Regex) -> Option<usize> {
+    regex.captures(&s)?.get(1)?.as_str().parse().ok()
+}
+
+fn dir_pairing(path: &str, regex: &Regex) -> Vec<(usize, String)> {
+    const MAX_DEPTH: usize = 5;
+    let mut files = vec![];
+    let mut stack = vec![];
+    let mut depth = 0;
+    stack.push(path.to_string());
+    while let Some(path) = stack.pop() {
+        depth += 1;
+        if depth > MAX_DEPTH {
+            break;
+        }
+        if let Ok(v) = std::fs::read_dir(path) {
+            for f in v.filter_map(|v| v.ok()) {
+                let s = o_to_str!(f.file_name());
+                if let Some(n) = get_captures(&s, regex) {
+                    files.push((n, o_to_str!(f.path())));
+                }
+                if let Ok(ftype) = f.file_type() {
+                    if ftype.is_dir() {
+                        stack.push(o_to_str!(f.path()));
+                    }
+                }
+            }
+        }
+    }
+    files
+}
+
+fn get_video_args(chosen_path: &str, anime: &Anime) -> Vec<String> {
+    let mut args = vec![chosen_path.to_string()];
+    for flag in &anime.single_flags {
+        args.push(flag.flag.clone());
+    }
+
+    if anime.pair_flags.enabled {
+        let video_regex = match Regex::new(&anime.pair_flags.video_regex) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("failed to create regex:{e}");
+                return args;
+            }
+        };
+        let videos = anime
+            .episodes()
+            .iter()
+            .map(|(_, v)| o_to_str!(Path::new(&v[0]).file_name().unwrap()).to_string())
+            .filter_map(|s| {
+                Some((
+                    video_regex
+                        .captures(&s)?
+                        .get(1)?
+                        .as_str()
+                        .parse::<usize>()
+                        .ok()?,
+                    s,
+                ))
+            })
+            .collect::<Vec<(usize, String)>>();
+        dbg!(&videos);
+        let filename = Path::new(chosen_path).file_name().unwrap();
+        for flag in anime.pair_flags.pair_flags.iter().filter(|v| v.enabled) {
+            dbg!(&flag);
+            let others = {
+                let regex = match Regex::new(&flag.regex) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("failed to create regex:{}:{e}", &flag.regex);
+                        continue;
+                    }
+                };
+                let path = match get_search_path(&flag.search_path, &anime.paths()) {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("failed to find search path:{}", &flag.search_path);
+                        continue;
+                    }
+                };
+                dbg!(dir_pairing(&path, &regex))
+            };
+
+            for (n, path) in others {
+                if let Some((_, video_path)) = videos.iter().find(|(n1, _)| *n1 == n) {
+                    dbg!(&video_path);
+                    if filename == Path::new(video_path).file_name().unwrap() {
+                        let deliminator = if flag.use_deliminator {
+                            flag.deliminator.clone()
+                        } else {
+                            " ".to_string()
+                        };
+                        let arg = dbg!(format!("{}{deliminator}{}", flag.flag, path));
+                        args.push(arg);
+                    }
+                }
+            }
+        }
+    }
+
+    return dbg!(args);
+}
+
+fn open_video(path: &str, anime: &Anime) {
+    let video_player = anime
+        .video_player
+        .clone()
+        .unwrap_or(DEFAULT_VIDEO_PLAYER.to_string());
+    let args = get_video_args(path, anime);
+    tokio::task::spawn(async move {
+        Command::new(&video_player).args(&args).spawn().unwrap().wait().unwrap();
+    });
+}
+
 fn textbox(
     context: &mut Context,
     textbox_state: &mut Textbox,
+    label: Option<&str>,
     enabled: bool,
     sidepad: i32,
     region: &mut Rect,
 ) -> bool {
     context.input_util.start();
     let font_info = INPUT_BOX_FONT_INFO;
+    let text_color = color_hex(0xB0B0B0);
     let height = context.text_manager.font_height(font_info);
-    let (text_border_region, new_region) = region.split_hori(height + 12, region.height());
+    let (label_region, new_region) = match label {
+        Some(_) => region.split_hori(height + 8, region.height()),
+        None => (rect!(0, 0, 0, 0), *region),
+    };
+    let (text_border_region, new_region) = new_region.split_hori(height + 12, region.height());
     let text_border_region = text_border_region.pad_left(sidepad).pad_right(sidepad);
     let text_region = Rect::from_center(
         text_border_region.center(),
         text_border_region.width() - 10,
         height,
     );
+
+    if let Some(label) = label {
+        let label_texture = context
+            .text_manager
+            .load(label, font_info, text_color, None);
+        let TextureQuery {
+            width: label_width,
+            height: label_height,
+            ..
+        } = label_texture.query();
+        let label_rect = rect!(
+            text_border_region.x(),
+            label_region.y(),
+            label_width,
+            label_height
+        );
+        context
+            .canvas
+            .copy(&label_texture, None, label_rect)
+            .unwrap();
+    }
 
     *region = new_region.pad_top(6);
     textbox_state.id = context.create_id(text_border_region);
@@ -286,13 +487,13 @@ fn textbox(
     context.canvas.draw_rect(text_border_region).unwrap();
 
     let mut cursor_offset = 0;
-    let text_color = color_hex(0xB0B0B0);
     if !textbox_state.text.is_empty() {
         let font_texture =
             context
                 .text_manager
                 .load(&textbox_state.text, font_info, text_color, None);
         let TextureQuery { width, height, .. } = font_texture.query();
+        debug_assert!(textbox_state.cursor_location <= textbox_state.text.len());
         cursor_offset = context
             .text_manager
             .text_size(
@@ -316,6 +517,7 @@ fn textbox(
         context.canvas.copy(&font_texture, None, text_rect).unwrap();
         context.canvas.set_clip_rect(None);
     }
+
     fn is_skip_char(c: char) -> bool {
         !c.is_ascii_alphanumeric()
     }
@@ -329,8 +531,9 @@ fn textbox(
             .set_draw_color(Color::RGBA(0x10, 0x10, 0x10, 0xA0));
         context.canvas.fill_rect(text_border_region).unwrap();
     } else if context.textbox_id == Some(textbox_state.id) {
-        use Keycode::*;
-        let key = |k| context.keyset.contains(k);
+        use sdl2::keyboard::Scancode::*;
+        //use Keycode::*;
+        let key = |k| context.keyset.contains(&Keycode::from_scancode(k).unwrap());
         let kmod = |m| context.keymod.contains(m);
         let cursor_rect = rect!(
             text_region.x + textbox_state.view_offset + cursor_offset,
@@ -338,18 +541,18 @@ fn textbox(
             1,
             height
         );
-
+        textbox_state.cursor_location = textbox_state.cursor_location.min(textbox_state.text.len());
         context.canvas.set_draw_color(text_color);
         context.canvas.fill_rect(cursor_rect).unwrap();
-        if !kmod(Mod::LCTRLMOD) && !kmod(Mod::LALTMOD) {
-            for c in context.text.drain(..) {
+        for c in context.text.drain(..) {
+            if !kmod(Mod::LCTRLMOD) && !kmod(Mod::LALTMOD) {
                 textbox_state.text.insert(textbox_state.cursor_location, c);
                 textbox_state.cursor_location += 1;
             }
         }
-        if kmod(Mod::LCTRLMOD) && key(&Z) {
+        if kmod(Mod::LCTRLMOD) && key(Z) {
             // TODO
-        } else if (kmod(Mod::LCTRLMOD) && key(&Left)) || (kmod(Mod::LALTMOD) && key(&B)) {
+        } else if (kmod(Mod::LCTRLMOD) && key(Left)) || (kmod(Mod::LALTMOD) && key(B)) {
             let bytes = textbox_state.text.as_bytes();
             if textbox_state.cursor_location > 0 {
                 while textbox_state.cursor_location > 0
@@ -364,7 +567,7 @@ fn textbox(
                     textbox_state.cursor_location -= 1;
                 }
             }
-        } else if kmod(Mod::LCTRLMOD) && key(&Right) || (kmod(Mod::LALTMOD) && key(&F)) {
+        } else if kmod(Mod::LCTRLMOD) && key(Right) || (kmod(Mod::LALTMOD) && key(F)) {
             let bytes = textbox_state.text.as_bytes();
             let len = textbox_state.text.len();
             while textbox_state.cursor_location < len
@@ -385,7 +588,7 @@ fn textbox(
             {
                 textbox_state.cursor_location += 1;
             }
-        } else if kmod(Mod::LCTRLMOD) && (key(&Backspace) || key(&W)) {
+        } else if kmod(Mod::LCTRLMOD) && (key(Backspace) || key(W)) {
             let bytes = textbox_state.text.as_bytes();
             if textbox_state.cursor_location > 0 {
                 let end = textbox_state.cursor_location;
@@ -406,28 +609,28 @@ fn textbox(
                 new_text.push_str(&rhs[end_range..]);
                 textbox_state.text = new_text;
             }
-        } else if key(&End) || (kmod(Mod::LCTRLMOD) && key(&E)) {
+        } else if key(End) || (kmod(Mod::LCTRLMOD) && key(E)) {
             textbox_state.cursor_location = textbox_state.text.len();
-        } else if key(&Home) || (kmod(Mod::LCTRLMOD) && key(&A)) {
+        } else if key(Home) || (kmod(Mod::LCTRLMOD) && key(A)) {
             textbox_state.cursor_location = 0;
-        } else if key(&Backspace) {
+        } else if key(Backspace) {
             if textbox_state.cursor_location > 0 {
                 textbox_state.text.remove(textbox_state.cursor_location - 1);
                 textbox_state.cursor_location -= 1;
             }
-        } else if kmod(Mod::LCTRLMOD) && key(&U) {
+        } else if kmod(Mod::LCTRLMOD) && key(U) {
             let (_, new_text) = textbox_state.text.split_at(textbox_state.cursor_location);
             textbox_state.text = new_text.to_string();
             textbox_state.cursor_location = 0;
-        } else if key(&Left) || (kmod(Mod::LCTRLMOD) && key(&B)) {
+        } else if key(Left) || (kmod(Mod::LCTRLMOD) && key(B)) {
             if textbox_state.cursor_location > 0 {
                 textbox_state.cursor_location -= 1;
             }
-        } else if key(&Right) || (kmod(Mod::LCTRLMOD) && key(&F)) {
+        } else if key(Right) || (kmod(Mod::LCTRLMOD) && key(F)) {
             if textbox_state.cursor_location < textbox_state.text.len() {
                 textbox_state.cursor_location += 1;
             }
-        } else if kmod(Mod::LCTRLMOD) && key(&V) {
+        } else if kmod(Mod::LCTRLMOD) && key(V) {
             match context.clipboard.clipboard_text() {
                 Ok(s) => {
                     textbox_state.text.push_str(&s);
@@ -439,7 +642,7 @@ fn textbox(
             };
         }
 
-        return key(&Return);
+        return key(Return);
     }
 
     false
@@ -491,7 +694,7 @@ impl<'a> App<'a, '_> {
             login_state: LoginState::default(),
             alias_popup_state: AliasPopupState::default(),
             title_popup_state: TitlePopupState::default(),
-            //state_flag: 0,
+            attach_flag_state: AttachFlagState::default(),
         }
     }
 
@@ -505,11 +708,6 @@ impl<'a> App<'a, '_> {
 
     pub fn keyup(&self, keycode: Keycode) -> bool {
         self.context.keyup(keycode)
-    }
-
-    pub fn get_string(&mut self, s: &str) -> Rc<str> {
-        // TODO: intern this boy
-        Rc::from(s)
     }
 
     pub fn frametime_frac(&self) -> f32 {
@@ -529,10 +727,12 @@ impl<'a> App<'a, '_> {
 
         if self.context.mouse_left_up() {
             self.context.click_id = None;
+            self.context.state_flag &= !(MOUSE_LEFT_UP | MOUSE_LEFT_DOWN);
         }
 
         if self.context.mouse_right_up() {
             self.context.click_id = None;
+            self.context.state_flag &= !(MOUSE_RIGHT_UP | MOUSE_RIGHT_DOWN);
         }
 
         self.context.mouse_update_id();
@@ -542,7 +742,7 @@ impl<'a> App<'a, '_> {
         self.context.keyset.clear();
         self.context.keyset_up.clear();
 
-        self.context.state_flag = 0;
+        self.context.state_flag &= !(MOUSE_MOVED | RESIZED | ID_UPDATED);
     }
 
     fn swap_screen(&mut self) {
@@ -569,9 +769,15 @@ fn switch(
     let (label_region, switchable_region) =
         switch_region.split_vert(switch_region.width() - switch_size, switch_region.width());
     let switchable_region = switchable_region
-        .left_shifted(SIDE_PAD)
+        //.pad_right(SIDE_PAD)
         .pad_top(8)
         .pad_bottom(16);
+    let switchable_region = rect!(
+        switchable_region.x() - SIDE_PAD,
+        switchable_region.y(),
+        switchable_region.width(),
+        switchable_region.height()
+    );
     switch_state.id = context.create_id(switchable_region);
 
     let label_region = label_region.pad_left(SIDE_PAD);
@@ -803,9 +1009,11 @@ impl<'a> Context<'a, '_> {
                 }
                 Event::KeyUp {
                     keycode: Some(keycode),
+                    keymod,
                     ..
                 } => {
                     self.keyset_up.insert(keycode);
+                    self.keymod = keymod;
                 }
                 Event::Window {
                     win_event: sdl2::event::WindowEvent::Resized(_, _),
